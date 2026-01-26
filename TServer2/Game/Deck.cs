@@ -1,0 +1,81 @@
+﻿using TServer2.Model;
+
+namespace TServer2.Game;
+
+/// <summary>
+/// 牌组
+/// </summary>
+public class Deck
+{
+    private readonly List<Card> _cards = [];
+    private int _currentIndex;
+
+    public Deck()
+    {
+        Initialize();
+        Shuffle();
+    }
+
+    private void Initialize()
+    {
+        _cards.Clear();
+        foreach (Suit suit in Enum.GetValues<Suit>())
+        {
+            foreach (Rank rank in Enum.GetValues<Rank>())
+            {
+                _cards.Add(new Card(suit, rank));
+            }
+        }
+        _currentIndex = 0;
+    }
+
+    /// <summary>
+    /// 洗牌
+    /// </summary>
+    public void Shuffle()
+    {
+        var random = Random.Shared;
+        for (var i = _cards.Count - 1; i > 0; i--)
+        {
+            var j = random.Next(i + 1);
+            (_cards[i], _cards[j]) = (_cards[j], _cards[i]);
+        }
+        _currentIndex = 0;
+    }
+
+    /// <summary>
+    /// 发一张牌
+    /// </summary>
+    public Card Deal()
+    {
+        if (_currentIndex >= _cards.Count)
+            throw new InvalidOperationException("No more cards in deck");
+        
+        return _cards[_currentIndex++];
+    }
+
+    /// <summary>
+    /// 烧牌（弃掉顶牌）
+    /// </summary>
+    public void Burn()
+    {
+        if (_currentIndex >= _cards.Count)
+            throw new InvalidOperationException("No more cards to burn");
+        
+        _currentIndex++;
+    }
+
+    /// <summary>
+    /// 剩余牌数
+    /// </summary>
+    public int RemainingCards => _cards.Count - _currentIndex;
+
+    /// <summary>
+    /// 重置牌组
+    /// </summary>
+    public void Reset()
+    {
+        Initialize();
+        Shuffle();
+    }
+}

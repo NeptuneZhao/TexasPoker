@@ -1,0 +1,21 @@
+﻿Server
+├── Network
+│   ├── ClientConnection
+│   └── MessageDispatcher
+├── Game
+│   ├── GameRoom
+│   ├── GameStateMachine
+│   ├── BettingRound
+│   ├── PotManager
+│   ├── HandEvaluator
+│   └── Deck
+├── Model
+│   ├── Player
+│   ├── Card
+│   └── Action
+├── Protocol
+│   ├── ClientMessage
+│   └── ServerMessage
+└── Logging
+    ├── ConsoleLogger
+    └── FileLogger
