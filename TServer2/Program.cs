@@ -4,14 +4,14 @@ using TServer2.Logging;
 
 namespace TServer2;
 
-class Program
+internal abstract class Program
 {
     private const int DefaultPort = 5000;
 
-    static async Task Main(string[] args)
+    public static async Task Main(string[] args)
     {
         // 初始化日志
-        Logger.Initialize(new GameLogger(LogLevel.Debug));
+        Logger.Initialize(new GameLogger());
 
         // 显示启动横幅
         DisplayBanner();
@@ -23,14 +23,14 @@ class Program
             port = customPort;
         }
 
-        Logger.Info($"Texas Hold'em Poker Server v1.0");
+        Logger.Info("Texas Hold'em Poker Server v1.0");
         Logger.Info($"Starting on port {port}...");
         Logger.Info("Waiting for players to join...");
-        Logger.Info($"  - Minimum players to start: 4");
-        Logger.Info($"  - Maximum players: 10");
-        Logger.Info($"  - Initial chips: 1000");
-        Logger.Info($"  - Small blind: 2, Big blind: 4");
-        Logger.Info($"  - Action timeout: 20 seconds");
+        Logger.Info("  - Minimum players to start: 4");
+        Logger.Info("  - Maximum players: 10");
+        Logger.Info("  - Initial chips: 1000");
+        Logger.Info("  - Small blind: 2, Big blind: 4");
+        Logger.Info("  - Action timeout: 20 seconds");
 
         // 创建并启动游戏控制器
         await using var controller = new GameRoomController(port);

@@ -52,14 +52,12 @@ public class ClientSession : IAsyncDisposable
             while (!_cts.IsCancellationRequested && _client.Connected)
             {
                 var message = await ReceiveMessageAsync(_cts.Token);
-                if (message != null)
-                {
-                    LastActivity = DateTime.UtcNow;
+                if (message == null) continue;
+                LastActivity = DateTime.UtcNow;
                     
-                    if (OnMessageReceived != null)
-                    {
-                        await OnMessageReceived(this, message);
-                    }
+                if (OnMessageReceived != null)
+                {
+                    await OnMessageReceived(this, message);
                 }
             }
         }
@@ -186,7 +184,7 @@ public class ClientSession : IAsyncDisposable
     /// <summary>
     /// 断开连接
     /// </summary>
-    public async Task DisconnectAsync()
+    private async Task DisconnectAsync()
     {
         await _cts.CancelAsync();
         
@@ -210,5 +208,7 @@ public class ClientSession : IAsyncDisposable
         _sendLock.Dispose();
         await _stream.DisposeAsync();
         _client.Dispose();
+        
+        GC.SuppressFinalize(this);
     }
 }

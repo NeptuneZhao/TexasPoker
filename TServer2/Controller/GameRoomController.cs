@@ -46,14 +46,14 @@ public class GameRoomController : IAsyncDisposable
     /// </summary>
     public async Task StopAsync()
     {
-        _countdownCts?.Cancel();
+        await _countdownCts?.CancelAsync()!;
         await _server.StopAsync();
         Logger.Info("Game Room Controller stopped");
     }
 
     #region Event Handlers
 
-    private async Task OnClientConnectedAsync(ClientSession session)
+    private static async Task OnClientConnectedAsync(ClientSession session)
     {
         Logger.Info($"New connection: {session.SessionId}");
         // 连接后等待 JoinRoom 消息
@@ -86,6 +86,8 @@ public class GameRoomController : IAsyncDisposable
                     await session.SendAsync(new ServerMessage { Type = ServerMessageType.Heartbeat });
                     break;
 
+                case ClientMessageType.ShowCards:
+                case ClientMessageType.MuckCards:
                 default:
                     Logger.Warn($"Unknown message type: {message.Type}");
                     break;
@@ -141,7 +143,7 @@ public class GameRoomController : IAsyncDisposable
             var playerCount = _game.Players.Count;
             if (playerCount < MinPlayersToStart && _countdownCts != null)
             {
-                _countdownCts.Cancel();
+                await _countdownCts.CancelAsync();
                 _countdownCts = null;
                 Logger.Info("Countdown cancelled - not enough players");
             }
@@ -277,7 +279,7 @@ public class GameRoomController : IAsyncDisposable
             {
                 _countdownCts = null;
             }
-        });
+        }, _countdownCts.Token);
     }
 
     #endregion
@@ -327,7 +329,7 @@ public class GameRoomController : IAsyncDisposable
         await Task.WhenAll(tasks);
     }
 
-    private async Task SafeSendAsync(ClientSession session, ServerMessage message)
+    private static async Task SafeSendAsync(ClientSession session, ServerMessage message)
     {
         try
         {
@@ -345,5 +347,7 @@ public class GameRoomController : IAsyncDisposable
     {
         await StopAsync();
         await _server.DisposeAsync();
+        
+        GC.SuppressFinalize(this);
     }
 }

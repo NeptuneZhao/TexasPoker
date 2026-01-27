@@ -19,9 +19,9 @@ public class Deck
     private void Initialize()
     {
         _cards.Clear();
-        foreach (Suit suit in Enum.GetValues<Suit>())
+        foreach (var suit in Enum.GetValues<Suit>())
         {
-            foreach (Rank rank in Enum.GetValues<Rank>())
+            foreach (var rank in Enum.GetValues<Rank>())
             {
                 _cards.Add(new Card(suit, rank));
             }
@@ -32,7 +32,7 @@ public class Deck
     /// <summary>
     /// 洗牌
     /// </summary>
-    public void Shuffle()
+    private void Shuffle()
     {
         var random = Random.Shared;
         for (var i = _cards.Count - 1; i > 0; i--)
@@ -46,13 +46,9 @@ public class Deck
     /// <summary>
     /// 发一张牌
     /// </summary>
-    public Card Deal()
-    {
-        if (_currentIndex >= _cards.Count)
-            throw new InvalidOperationException("No more cards in deck");
-        
-        return _cards[_currentIndex++];
-    }
+    public Card Deal() => _currentIndex >= _cards.Count ?
+        throw new InvalidOperationException("No more cards in deck") :
+        _cards[_currentIndex++];
 
     /// <summary>
     /// 烧牌（弃掉顶牌）

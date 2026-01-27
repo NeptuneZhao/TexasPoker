@@ -7,14 +7,11 @@ namespace TServer2.Game;
 /// <summary>
 /// 游戏状态机 - 管理单局游戏的生命周期
 /// </summary>
-public class GameStateMachine
+public class GameStateMachine(Func<string, ServerMessage, Task> unicast, Func<ServerMessage, Task> broadcast)
 {
     private readonly Lock _lock = new();
-    private readonly Func<string, ServerMessage, Task> _unicast;
-    private readonly Func<ServerMessage, Task> _broadcast;
-    
+
     // 游戏配置
-    private const int InitialChips = 1000;
     private const int SmallBlindAmount = 2;
     private const int BigBlindAmount = 4;
     private const int ActionTimeoutSeconds = 20;
@@ -22,21 +19,21 @@ public class GameStateMachine
     // 游戏状态
     public GamePhase Phase { get; private set; } = GamePhase.WaitingForPlayers;
     public List<Player> Players { get; } = [];
-    public List<Card> CommunityCards { get; } = [];
+    private List<Card> CommunityCards { get; } = [];
     
     // 位置相关
-    public int DealerSeatIndex { get; private set; } = -1;
-    public int SmallBlindSeatIndex { get; private set; } = -1;
-    public int BigBlindSeatIndex { get; private set; } = -1;
-    public int CurrentActorIndex { get; private set; } = -1;
+    private int DealerSeatIndex { get; set; } = -1;
+    private int SmallBlindSeatIndex { get; set; } = -1;
+    private int BigBlindSeatIndex { get; set; } = -1;
+    private int CurrentActorIndex { get; set; } = -1;
     
     // 游戏组件
-    private Deck _deck = new();
+    private readonly Deck _deck = new();
     private readonly PotManager _potManager = new();
     private readonly BettingRound _bettingRound = new();
     
     // 行动追踪
-    private HashSet<string> _playersActedThisRound = [];
+    private readonly HashSet<string> _playersActedThisRound = [];
     private string? _lastCallerPlayerId; // 用于摊牌时强制亮牌
     
     // 行动超时
@@ -44,12 +41,6 @@ public class GameStateMachine
     
     // 手牌计数
     private int _handNumber;
-
-    public GameStateMachine(Func<string, ServerMessage, Task> unicast, Func<ServerMessage, Task> broadcast)
-    {
-        _unicast = unicast;
-        _broadcast = broadcast;
-    }
 
     #region Player Management
 
@@ -76,7 +67,7 @@ public class GameStateMachine
                 name = $"{name}_{Random.Shared.Next(100, 1000)}";
 
             var seatIndex = GetNextAvailableSeat();
-            var player = new Player(name, InitialChips)
+            var player = new Player(name)
             {
                 SeatIndex = seatIndex
             };
@@ -116,7 +107,7 @@ public class GameStateMachine
 
             player.IsConnected = false;
             
-            if (Phase == GamePhase.WaitingForPlayers || Phase == GamePhase.Countdown)
+            if (Phase is GamePhase.WaitingForPlayers or GamePhase.Countdown)
             {
                 Players.Remove(player);
                 Logger.Info($"Player {player.Name} removed ({reason})");
@@ -276,7 +267,7 @@ public class GameStateMachine
 
         Logger.Info($"Blinds: {sbPlayer.Name} posts SB {sbPlayer.CurrentBet}, {bbPlayer.Name} posts BB {bbPlayer.CurrentBet}");
 
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.BlindsPosted,
             Payload = new BlindsPostedPayload
@@ -292,7 +283,7 @@ public class GameStateMachine
     private async Task BroadcastNewHandAsync()
     {
         // 广播游戏开始
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.NewHandStarted,
             Payload = new NewHandStartedPayload
@@ -308,7 +299,7 @@ public class GameStateMachine
         // 向每个玩家发送其手牌
         foreach (var player in Players)
         {
-            await _unicast(player.Id, new ServerMessage
+            await unicast(player.Id, new ServerMessage
             {
                 Type = ServerMessageType.HoleCards,
                 Payload = new HoleCardsPayload
@@ -360,11 +351,9 @@ public class GameStateMachine
             for (var i = 1; i <= Players.Count; i++)
             {
                 var idx = (dealerIdx + i) % Players.Count;
-                if (!Players[idx].HasFolded)
-                {
-                    CurrentActorIndex = idx;
-                    break;
-                }
+                if (Players[idx].HasFolded) continue;
+                CurrentActorIndex = idx;
+                break;
             }
         }
 
@@ -410,7 +399,7 @@ public class GameStateMachine
 
         Logger.Info($"Requesting action from {player.Name}. Available: {string.Join(", ", actions.Select(a => a.Type))}");
 
-        await _unicast(player.Id, new ServerMessage
+        await unicast(player.Id, new ServerMessage
         {
             Type = ServerMessageType.ActionRequest,
             Payload = request
@@ -440,7 +429,7 @@ public class GameStateMachine
             {
                 // 正常取消
             }
-        });
+        }, _actionTimeoutCts.Token);
     }
 
     /// <summary>
@@ -448,7 +437,7 @@ public class GameStateMachine
     /// </summary>
     public async Task HandlePlayerActionAsync(string playerId, ActionType action, int amount)
     {
-        _actionTimeoutCts?.Cancel();
+        await _actionTimeoutCts?.CancelAsync()!;
 
         Player? player;
         bool shouldAdvance;
@@ -508,7 +497,7 @@ public class GameStateMachine
         }
 
         // 广播行动
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.PlayerActed,
             Payload = new PlayerActedPayload
@@ -556,10 +545,7 @@ public class GameStateMachine
 
         // 如果有All-In玩家，检查是否有人未匹配
         var maxBet = Players.Where(p => !p.HasFolded).Max(p => p.CurrentBet);
-        if (activePlayers.Any(p => p.CurrentBet < maxBet))
-            return false;
-
-        return true;
+        return !activePlayers.Any(p => p.CurrentBet < maxBet);
     }
 
     private async Task MoveToNextPlayerAsync()
@@ -657,7 +643,7 @@ public class GameStateMachine
         Logger.Info($"Community cards: {string.Join(", ", CommunityCards)}");
 
         // 广播公共牌
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.PhaseChanged,
             Payload = new PhaseChangedPayload
@@ -669,7 +655,7 @@ public class GameStateMachine
         });
 
         // 重置下注轮
-        _bettingRound.StartRound(BigBlindAmount, 0);
+        _bettingRound.StartRound(BigBlindAmount);
         await StartBettingRoundAsync();
     }
 
@@ -693,7 +679,7 @@ public class GameStateMachine
             _lock.Exit();
         }
 
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.PotDistribution,
             Payload = new PotDistributionPayload
@@ -748,14 +734,12 @@ public class GameStateMachine
                           ?? playersInHand.First();
         
         // 按顺序请求亮牌或盖牌
-        var showOrder = new List<Player>();
         var startIdx = Players.IndexOf(firstToShow);
-        for (var i = 0; i < Players.Count; i++)
-        {
-            var idx = (startIdx + i) % Players.Count;
-            if (!Players[idx].HasFolded)
-                showOrder.Add(Players[idx]);
-        }
+        var showOrder = (
+            from idx in Players.Select((_, i) => (startIdx + i) % Players.Count)
+            where !Players[idx].HasFolded
+            select Players[idx])
+            .ToList();
 
         // 评估所有玩家手牌
         var evaluations = new Dictionary<string, HandEvaluation>();
@@ -780,7 +764,7 @@ public class GameStateMachine
             var isFirst = player == firstToShow;
             var eval = evaluations[player.Id];
 
-            await _broadcast(new ServerMessage
+            await broadcast(new ServerMessage
             {
                 Type = ServerMessageType.PlayerShowedCards,
                 Payload = new PlayerShowedCardsPayload
@@ -811,32 +795,28 @@ public class GameStateMachine
                 Winners = []
             };
 
-            foreach (var group in rankings)
+            foreach (var winners in rankings.Select(group => group.Where(id => pot.EligiblePlayerIds.Contains(id)).ToList()).Where(winners => winners.Count > 0))
             {
-                var winners = group.Where(id => pot.EligiblePlayerIds.Contains(id)).ToList();
-                if (winners.Count > 0)
+                foreach (var winnerId in winners)
                 {
-                    foreach (var winnerId in winners)
+                    var player = Players.First(p => p.Id == winnerId);
+                    var eval = evaluations[winnerId];
+                    potWinner.Winners.Add(new WinnerInfo
                     {
-                        var player = Players.First(p => p.Id == winnerId);
-                        var eval = evaluations[winnerId];
-                        potWinner.Winners.Add(new WinnerInfo
-                        {
-                            PlayerId = winnerId,
-                            PlayerName = player.Name,
-                            AmountWon = winnings.GetValueOrDefault(winnerId, 0) / _potManager.Pots.Count(p => 
-                                p.EligiblePlayerIds.Contains(winnerId)),
-                            HandRank = eval.Rank.ToString()
-                        });
-                    }
-                    break;
+                        PlayerId = winnerId,
+                        PlayerName = player.Name,
+                        AmountWon = winnings.GetValueOrDefault(winnerId, 0) / _potManager.Pots.Count(p => 
+                            p.EligiblePlayerIds.Contains(winnerId)),
+                        HandRank = eval.Rank.ToString()
+                    });
                 }
+                break;
             }
 
             potWinners.Add(potWinner);
         }
 
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.PotDistribution,
             Payload = new PotDistributionPayload { Winners = potWinners }
@@ -857,7 +837,7 @@ public class GameStateMachine
             _lock.Exit();
         }
 
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.HandEnded,
             Payload = new HandEndedPayload
@@ -901,7 +881,7 @@ public class GameStateMachine
         foreach (var r in rankings)
             Logger.Info($"#{r.Rank} {r.PlayerName}: {r.FinalChips} chips");
 
-        await _broadcast(new ServerMessage
+        await broadcast(new ServerMessage
         {
             Type = ServerMessageType.GameOver,
             Payload = new GameOverPayload
@@ -914,7 +894,7 @@ public class GameStateMachine
 
     private async Task SendErrorAsync(string playerId, string message)
     {
-        await _unicast(playerId, new ServerMessage
+        await unicast(playerId, new ServerMessage
         {
             Type = ServerMessageType.Error,
             Payload = new ErrorPayload { Message = message }

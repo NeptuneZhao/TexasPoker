@@ -10,6 +10,7 @@ public static class HandEvaluator
     /// <summary>
     /// 评估玩家手牌
     /// </summary>
+    /// <param name="playerId"></param>
     /// <param name="holeCards">玩家的两张底牌</param>
     /// <param name="communityCards">公共牌（3-5张）</param>
     /// <returns>评估结果</returns>
@@ -29,7 +30,7 @@ public static class HandEvaluator
         // 获取所有5张牌的组合
         var combinations = GetCombinations(allCards, 5);
         
-        HandRank bestRank = HandRank.HighCard;
+        var bestRank = HandRank.HighCard;
         List<Card> bestFive = [];
         List<int> bestKickers = [];
 
@@ -46,11 +47,9 @@ public static class HandEvaluator
             else if (rank == bestRank)
             {
                 // 同等牌型比较kicker
-                if (CompareKickers(kickers, bestKickers) > 0)
-                {
-                    bestFive = sortedHand;
-                    bestKickers = kickers;
-                }
+                if (CompareKickers(kickers, bestKickers) <= 0) continue;
+                bestFive = sortedHand;
+                bestKickers = kickers;
             }
         }
 
@@ -73,32 +72,34 @@ public static class HandEvaluator
             .ToList();
 
         var counts = groups.Select(g => g.Count()).ToList();
-        
-        // 皇家同花顺
-        if (isFlush && isStraight && sorted[0].Rank == Rank.Ace && !isWheel)
+
+        switch (isFlush)
         {
-            return (HandRank.RoyalFlush, sorted, [(int)Rank.Ace]);
+            // 皇家同花顺
+            case true when isStraight && sorted[0].Rank == Rank.Ace && !isWheel:
+                return (HandRank.RoyalFlush, sorted, [(int)Rank.Ace]);
+            // 同花顺
+            case true when isStraight:
+            {
+                var highCard = isWheel ? (int)Rank.Five : (int)sorted[0].Rank;
+                return (HandRank.StraightFlush, sorted, [highCard]);
+            }
         }
 
-        // 同花顺
-        if (isFlush && isStraight)
+        switch (counts[0])
         {
-            var highCard = isWheel ? (int)Rank.Five : (int)sorted[0].Rank;
-            return (HandRank.StraightFlush, sorted, [highCard]);
-        }
-
-        // 四条
-        if (counts[0] == 4)
-        {
-            var kickers = new List<int> { (int)groups[0].Key, (int)groups[1].Key };
-            return (HandRank.FourOfAKind, groups.SelectMany(g => g).ToList(), kickers);
-        }
-
-        // 葫芦
-        if (counts[0] == 3 && counts[1] == 2)
-        {
-            var kickers = new List<int> { (int)groups[0].Key, (int)groups[1].Key };
-            return (HandRank.FullHouse, groups.SelectMany(g => g).ToList(), kickers);
+            // 四条
+            case 4:
+            {
+                var kickers = new List<int> { (int)groups[0].Key, (int)groups[1].Key };
+                return (HandRank.FourOfAKind, groups.SelectMany(g => g).ToList(), kickers);
+            }
+            // 葫芦
+            case 3 when counts[1] == 2:
+            {
+                var kickers = new List<int> { (int)groups[0].Key, (int)groups[1].Key };
+                return (HandRank.FullHouse, groups.SelectMany(g => g).ToList(), kickers);
+            }
         }
 
         // 同花
@@ -115,19 +116,21 @@ public static class HandEvaluator
             return (HandRank.Straight, sorted, [highCard]);
         }
 
-        // 三条
-        if (counts[0] == 3)
+        switch (counts[0])
         {
-            var kickers = new List<int> { (int)groups[0].Key };
-            kickers.AddRange(groups.Skip(1).Select(g => (int)g.Key));
-            return (HandRank.ThreeOfAKind, groups.SelectMany(g => g).ToList(), kickers);
-        }
-
-        // 两对
-        if (counts[0] == 2 && counts[1] == 2)
-        {
-            var kickers = new List<int> { (int)groups[0].Key, (int)groups[1].Key, (int)groups[2].Key };
-            return (HandRank.TwoPair, groups.SelectMany(g => g).ToList(), kickers);
+            // 三条
+            case 3:
+            {
+                var kickers = new List<int> { (int)groups[0].Key };
+                kickers.AddRange(groups.Skip(1).Select(g => (int)g.Key));
+                return (HandRank.ThreeOfAKind, groups.SelectMany(g => g).ToList(), kickers);
+            }
+            // 两对
+            case 2 when counts[1] == 2:
+            {
+                var kickers = new List<int> { (int)groups[0].Key, (int)groups[1].Key, (int)groups[2].Key };
+                return (HandRank.TwoPair, groups.SelectMany(g => g).ToList(), kickers);
+            }
         }
 
         // 一对

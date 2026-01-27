@@ -113,7 +113,7 @@ public class GameLogger : ILogger
     }
 
     public void Debug(string message) => Log(message, LogLevel.Debug);
-    public void Info(string message) => Log(message, LogLevel.Info);
+    public void Info(string message) => Log(message);
     public void Warn(string message) => Log(message, LogLevel.Warn);
     public void Error(string message) => Log(message, LogLevel.Error);
     public void Fatal(string message) => Log(message, LogLevel.Fatal);
@@ -136,5 +136,4 @@ public static class Logger
     public static void Warn(string message) => _instance.Warn(message);
     public static void Error(string message) => _instance.Error(message);
     public static void Fatal(string message) => _instance.Fatal(message);
-    public static void Log(string message, LogLevel level = LogLevel.Info) => _instance.Log(message, level);
 }

@@ -67,22 +67,12 @@ public enum HandRank
 /// <summary>
 /// 玩家手牌评估结果
 /// </summary>
-public class HandEvaluation
+public class HandEvaluation(string playerId, HandRank rank, List<Card> bestFive, List<int> kickers)
 {
-    public string PlayerId { get; set; } = string.Empty;
-    public HandRank Rank { get; set; }
-    public List<Card> BestFive { get; set; } = [];
-    public List<int> Kickers { get; set; } = []; // 用于比较同等牌型
-
-    public HandEvaluation() { }
-
-    public HandEvaluation(string playerId, HandRank rank, List<Card> bestFive, List<int> kickers)
-    {
-        PlayerId = playerId;
-        Rank = rank;
-        BestFive = bestFive;
-        Kickers = kickers;
-    }
+    public string PlayerId { get; } = playerId;
+    public HandRank Rank { get; } = rank;
+    public List<Card> BestFive { get; } = bestFive;
+    public List<int> Kickers { get; } = kickers; // 用于比较同等牌型
 }
 
 /// <summary>
@@ -90,11 +80,9 @@ public class HandEvaluation
 /// </summary>
 public class HandEvaluationDto
 {
-    public string PlayerId { get; set; } = string.Empty;
-    public string Rank { get; set; } = string.Empty;
-    public List<CardDto> BestFive { get; set; } = [];
-
-    public HandEvaluationDto() { }
+    public string PlayerId { get; set; }
+    public string Rank { get; set; }
+    public List<CardDto> BestFive { get; set; }
 
     public HandEvaluationDto(HandEvaluation eval)
     {

@@ -50,10 +50,10 @@ public enum ActionType
 /// </summary>
 public class ClientMessage
 {
-    public ClientMessageType Type { get; set; }
-    public string? PlayerName { get; set; }  // JoinRoom时使用
-    public ActionType? Action { get; set; }  // PlayerAction时使用
-    public int? Amount { get; set; }         // Bet/Raise/AllIn时使用
+    public ClientMessageType Type { get; init; }
+    public string? PlayerName { get; init; }  // JoinRoom时使用
+    public ActionType? Action { get; init; }  // PlayerAction时使用
+    public int? Amount { get; init; }         // Bet/Raise/AllIn时使用
 }
 
 /// <summary>

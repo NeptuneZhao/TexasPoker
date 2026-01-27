@@ -3,28 +3,28 @@
 /// <summary>
 /// 玩家
 /// </summary>
-public class Player
+public class Player(string name, int chips = 1000)
 {
     /// <summary>
     /// 玩家唯一标识
     /// </summary>
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Id { get; } = Guid.NewGuid().ToString();
     
     /// <summary>
     /// 玩家名字
     /// </summary>
-    public string Name { get; set; } = string.Empty;
-    
+    public string Name { get; } = name;
+
     /// <summary>
     /// 座位索引（0-9）
     /// </summary>
-    public int SeatIndex { get; set; } = -1;
+    public int SeatIndex { get; init; } = -1;
     
     /// <summary>
     /// 筹码数量
     /// </summary>
-    public int Chips { get; set; }
-    
+    public int Chips { get; set; } = chips;
+
     /// <summary>
     /// 当前轮次已下注金额
     /// </summary>
@@ -33,7 +33,7 @@ public class Player
     /// <summary>
     /// 本局总下注金额
     /// </summary>
-    public int TotalBetThisHand { get; set; }
+    private int TotalBetThisHand { get; set; }
     
     /// <summary>
     /// 是否已弃牌
@@ -43,7 +43,7 @@ public class Player
     /// <summary>
     /// 是否已全下
     /// </summary>
-    public bool IsAllIn { get; set; }
+    public bool IsAllIn { get; private set; }
     
     /// <summary>
     /// 是否已连接
@@ -53,20 +53,12 @@ public class Player
     /// <summary>
     /// 手牌（两张）
     /// </summary>
-    public List<Card> HoleCards { get; set; } = [];
+    public List<Card> HoleCards { get; } = [];
     
     /// <summary>
     /// 是否在摊牌阶段选择亮牌
     /// </summary>
     public bool WillShowCards { get; set; }
-
-    public Player() { }
-
-    public Player(string name, int chips = 1000)
-    {
-        Name = name;
-        Chips = chips;
-    }
 
     /// <summary>
     /// 重置玩家状态（新一轮开始时调用）

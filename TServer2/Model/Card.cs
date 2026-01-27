@@ -23,18 +23,10 @@ public enum Rank
 /// <summary>
 /// 扑克牌
 /// </summary>
-public class Card
+public class Card(Suit suit, Rank rank)
 {
-    public Suit Suit { get; set; }
-    public Rank Rank { get; set; }
-
-    public Card() { }
-    
-    public Card(Suit suit, Rank rank)
-    {
-        Suit = suit;
-        Rank = rank;
-    }
+    public Suit Suit { get; } = suit;
+    public Rank Rank { get; } = rank;
 
     private static readonly Dictionary<Suit, string> SuitSymbols = new()
     {
@@ -72,20 +64,10 @@ public class Card
 /// <summary>
 /// 用于JSON传输的卡片DTO
 /// </summary>
-public class CardDto
+public class CardDto(Card card)
 {
-    public string Suit { get; set; } = string.Empty;
-    public int Rank { get; set; }
-    public string Display { get; set; } = string.Empty;
-
-    public CardDto() { }
-
-    public CardDto(Card card)
-    {
-        Suit = card.Suit.ToString();
-        Rank = (int)card.Rank;
-        Display = card.ToString();
-    }
+    private string Suit { get; } = card.Suit.ToString();
+    private int Rank { get; } = (int)card.Rank;
 
     public Card ToCard()
     {

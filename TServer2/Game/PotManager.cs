@@ -166,19 +166,9 @@ public class PotManager
                     {
                         // 零头给从小盲位开始顺时针第一个赢下此局的玩家
                         var smallBlindIdx = players.FindIndex(p => p.Id == smallBlindPlayerId);
-                        string? remainderWinner = null;
+                        var remainderWinner = players.Select((_, i) => (smallBlindIdx + i) % players.Count).Select(idx => players[idx].Id).FirstOrDefault(playerId => winners.Contains(playerId));
 
                         // 从小盲位开始顺时针找第一个获胜者
-                        for (var i = 0; i < players.Count; i++)
-                        {
-                            var idx = (smallBlindIdx + i) % players.Count;
-                            var playerId = players[idx].Id;
-                            if (winners.Contains(playerId))
-                            {
-                                remainderWinner = playerId;
-                                break;
-                            }
-                        }
 
                         if (remainderWinner != null)
                         {
@@ -196,11 +186,10 @@ public class PotManager
             foreach (var (playerId, amount) in winnings)
             {
                 var player = players.FirstOrDefault(p => p.Id == playerId);
-                if (player != null)
-                {
-                    player.Chips += amount;
-                    Logger.Info($"{player.Name} wins {amount} chips (now has {player.Chips})");
-                }
+                if (player == null) continue;
+                
+                player.Chips += amount;
+                Logger.Info($"{player.Name} wins {amount} chips (now has {player.Chips})");
             }
         }
         finally

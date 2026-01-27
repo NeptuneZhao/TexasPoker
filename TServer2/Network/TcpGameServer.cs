@@ -8,9 +8,9 @@ namespace TServer2.Network;
 /// <summary>
 /// TCP 服务器
 /// </summary>
-public class TcpGameServer : IAsyncDisposable
+public class TcpGameServer(int port) : IAsyncDisposable
 {
-    private readonly TcpListener _listener;
+    private readonly TcpListener _listener = new(IPAddress.Any, port);
     private readonly CancellationTokenSource _cts = new();
     private readonly List<ClientSession> _sessions = [];
     private readonly Lock _sessionsLock = new();
@@ -18,11 +18,6 @@ public class TcpGameServer : IAsyncDisposable
     public event Func<ClientSession, Task>? OnClientConnected;
     public event Func<ClientSession, ClientMessage, Task>? OnMessageReceived;
     public event Func<ClientSession, Exception?, Task>? OnClientDisconnected;
-
-    public TcpGameServer(int port)
-    {
-        _listener = new TcpListener(IPAddress.Any, port);
-    }
 
     /// <summary>
     /// 启动服务器
@@ -116,7 +111,7 @@ public class TcpGameServer : IAsyncDisposable
     /// <summary>
     /// 获取所有会话
     /// </summary>
-    public List<ClientSession> GetAllSessions()
+    private List<ClientSession> GetAllSessions()
     {
         _sessionsLock.Enter();
         try
@@ -160,5 +155,7 @@ public class TcpGameServer : IAsyncDisposable
     {
         await StopAsync();
         _cts.Dispose();
+        
+        GC.SuppressFinalize(this);
     }
 }

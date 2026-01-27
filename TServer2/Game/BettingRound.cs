@@ -104,11 +104,10 @@ public class BettingRound
         }
 
         // 全下 - 只要有筹码就可以
-        if (playerChips > 0)
-        {
-            var allInTotal = player.CurrentBet + playerChips;
-            actions.Add(new AvailableAction(ActionType.AllIn, $"All-In {playerChips}", playerChips, playerChips));
-        }
+        if (playerChips <= 0) return actions;
+        
+        var allInTotal = player.CurrentBet + playerChips;
+        actions.Add(new AvailableAction(ActionType.AllIn, $"All-In {playerChips}", playerChips, playerChips));
 
         return actions;
     }

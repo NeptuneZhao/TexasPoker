@@ -76,7 +76,7 @@ public enum ServerMessageType
 /// </summary>
 public class ServerMessage
 {
-    public ServerMessageType Type { get; set; }
+    public ServerMessageType Type { get; init; }
     public object? Payload { get; set; }
 }
 
@@ -278,7 +278,7 @@ public class PotWinner
 {
     public string PotName { get; set; } = string.Empty;
     public int PotAmount { get; set; }
-    public List<WinnerInfo> Winners { get; set; } = [];
+    public List<WinnerInfo> Winners { get; init; } = [];
 }
 
 /// <summary>
@@ -315,10 +315,10 @@ public class GameOverPayload
 /// </summary>
 public class RankingEntry
 {
-    public int Rank { get; set; }
+    public int Rank { get; init; }
     public string PlayerId { get; set; } = string.Empty;
-    public string PlayerName { get; set; } = string.Empty;
-    public int FinalChips { get; set; }
+    public string PlayerName { get; init; } = string.Empty;
+    public int FinalChips { get; init; }
 }
 
 /// <summary>

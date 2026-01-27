@@ -13,29 +13,20 @@ public class Pot
     /// <summary>
     /// 有资格争夺此底池的玩家ID列表
     /// </summary>
-    public List<string> EligiblePlayerIds { get; set; } = [];
+    public List<string> EligiblePlayerIds { get; init; } = [];
 
     /// <summary>
     /// 底池名称（主池/边池1/边池2...）
     /// </summary>
-    public string Name { get; set; } = "Main Pot";
+    public string Name { get; init; } = "Main Pot";
 }
 
 /// <summary>
 /// 用于JSON传输的底池DTO
 /// </summary>
-public class PotDto
+public class PotDto(Pot pot)
 {
-    public int Amount { get; set; }
-    public List<string> EligiblePlayerIds { get; set; } = [];
-    public string Name { get; set; } = string.Empty;
-
-    public PotDto() { }
-
-    public PotDto(Pot pot)
-    {
-        Amount = pot.Amount;
-        EligiblePlayerIds = [..pot.EligiblePlayerIds];
-        Name = pot.Name;
-    }
+    public int Amount { get; set; } = pot.Amount;
+    public List<string> EligiblePlayerIds { get; set; } = [..pot.EligiblePlayerIds];
+    public string Name { get; set; } = pot.Name;
 }
