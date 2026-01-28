@@ -19,7 +19,6 @@ public enum LogLevel
 /// </summary>
 public interface ILogger
 {
-    void Log(string message, LogLevel level = LogLevel.Info);
     void Debug(string message);
     void Info(string message);
     void Warn(string message);
@@ -59,12 +58,12 @@ public class GameLogger : ILogger
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
         var levelStr = level.ToString().ToUpper().PadRight(5);
         
-        // 控制台输出（使用Spectre.Console美化）
+        // 控制台输出
         var color = level switch
         {
             LogLevel.Debug => "grey",
-            LogLevel.Info => "white",
-            LogLevel.Warn => "yellow",
+            LogLevel.Info  => "white",
+            LogLevel.Warn  => "yellow",
             LogLevel.Error => "red",
             LogLevel.Fatal => "red bold",
             _ => "white"
@@ -79,16 +78,8 @@ public class GameLogger : ILogger
             LogLevel.Fatal => "red bold",
             _ => "white"
         };
-
-        try
-        {
-            AnsiConsole.MarkupLine($"[grey]{timestamp}[/] [[{levelColor}]{levelStr}[/]] [{color}]{Markup.Escape(message)}[/]");
-        }
-        catch
-        {
-            // 如果Spectre.Console输出失败，回退到普通Console
-            Console.WriteLine($"{timestamp} [{levelStr}] {message}");
-        }
+        
+        AnsiConsole.MarkupLine($"[grey]{timestamp}[/] [{levelColor}]{levelStr}[/] [{color}]{Markup.Escape(message)}[/]");
 
         // 文件输出
         var logLine = $"{timestamp} [{levelStr}] {message}{Environment.NewLine}";
@@ -102,9 +93,9 @@ public class GameLogger : ILogger
         {
             File.AppendAllText(_logFilePath, logLine);
         }
-        catch (IOException)
+        catch (IOException ie)
         {
-            // 忽略文件写入错误
+            Log("Failed to write log to file: " + ie.Message, LogLevel.Error);
         }
         finally
         {

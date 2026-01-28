@@ -37,11 +37,11 @@ internal abstract class Program
         
         // 设置优雅关闭
         var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
+        Console.CancelKeyPress += async (_, e) =>
         {
             e.Cancel = true;
             Logger.Info("Shutdown signal received...");
-            cts.Cancel();
+            await cts.CancelAsync();
         };
 
         try
@@ -76,11 +76,7 @@ internal abstract class Program
     {
         try
         {
-            AnsiConsole.Write(
-                new FigletText("Texas Poker")
-                    .LeftJustified()
-                    .Color(Color.Green));
-
+            AnsiConsole.Write(new FigletText("Texas Poker").LeftJustified().Color(Color.Green));
             AnsiConsole.Write(new Rule("[yellow]Server[/]").LeftJustified());
             AnsiConsole.WriteLine();
         }

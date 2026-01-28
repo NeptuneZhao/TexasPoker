@@ -1,30 +1,37 @@
 ﻿namespace TClient.Protocol;
 
-[Serializable]
-public class ClientMessage
-{
-	public ClientMessageType Type { get; set; }
-	public int PlayerId { get; set; }
-	public ActionType Action { get; set; }
-	public object? PayLoad { get; set; }
-}
-
+/// <summary>
+/// 客户端发送的消息类型（与TServer2同步）
+/// </summary>
 public enum ClientMessageType
 {
-	JoinRoom,
-	Ready,
-	PlayerAction,
-	ShowHand,
-	FoldAtShowdown,
-	Chat
+    JoinRoom,
+    PlayerAction,
+    ShowCards,
+    MuckCards,
+    Heartbeat
 }
 
+/// <summary>
+/// 玩家行动类型
+/// </summary>
 public enum ActionType
 {
-	Fold,  // 弃牌
-	Pass,  // 过牌
-	Call,  // 跟注
-	Bet,   // 下注
-	Raise, // 加注
-	AllIn, // 全下
+    Fold,
+    Check,
+    Call,
+    Bet,
+    Raise,
+    AllIn
+}
+
+/// <summary>
+/// 客户端消息
+/// </summary>
+public class ClientMessage
+{
+    public ClientMessageType Type { get; init; }
+    public string? PlayerName { get; init; }
+    public ActionType? Action { get; init; }
+    public int? Amount { get; init; }
 }

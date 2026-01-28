@@ -1,4 +1,5 @@
-﻿using System.Net.Sockets;
+﻿using System.Buffers.Binary;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using TClient.Protocol;
@@ -6,137 +7,266 @@ using TClient.Protocol;
 namespace TClient.Network;
 
 /// <summary>
-/// TCP网络客户端 - 处理与服务器的通信
+/// TCP网络客户端 - 与TServer2通信
+/// 协议格式：[4字节大端长度头][JSON Body]
 /// </summary>
-public class TcpGameClient(string host = "127.0.0.1", int port = 8848) : IDisposable
+public class TcpGameClient : IAsyncDisposable
 {
-	private TcpClient? _client;
-	private StreamReader? _reader;
-	private StreamWriter? _writer;
-	private CancellationTokenSource? _cts;
+    private readonly string _host;
+    private readonly int _port;
+    
+    private TcpClient? _client;
+    private NetworkStream? _stream;
+    private CancellationTokenSource? _cts;
+    private Task? _receiveTask;
+    private Task? _heartbeatTask;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
 
-	public event Action<ServerMessage>? OnMessageReceived;
-	public event Action<string>? OnRawMessageReceived;
-	public event Action<string>? OnError;
-	public event Action? OnConnected;
-	public event Action? OnDisconnected;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
 
-	public async Task<bool> ConnectAsync()
-	{
-		try
-		{
-			_client = new TcpClient();
-			await _client.ConnectAsync(host, port);
-			
-			var stream = _client.GetStream();
-			_reader = new StreamReader(stream, Encoding.UTF8);
-			_writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
-			
-			_cts = new CancellationTokenSource();
-			_ = Task.Run(() => ReceiveLoopAsync(_cts.Token));
-			
-			OnConnected?.Invoke();
-			return true;
-		}
-		catch (Exception ex)
-		{
-			OnError?.Invoke($"Connection failed: {ex.Message}");
-			return false;
-		}
-	}
+    public event Func<ServerMessage, Task>? OnMessageReceived;
+    public event Func<string, Task>? OnError;
+    public event Func<Task>? OnConnected;
+    public event Func<Task>? OnDisconnected;
 
-	private async Task ReceiveLoopAsync(CancellationToken ct)
-	{
-		try
-		{
-			while (!ct.IsCancellationRequested && _reader != null)
-			{
-				var line = await _reader.ReadLineAsync(ct);
-				if (line == null)
-				{
-					OnDisconnected?.Invoke();
-					break;
-				}
+    public bool IsConnected => _client?.Connected ?? false;
 
-				OnRawMessageReceived?.Invoke(line);
+    public TcpGameClient(string host = "127.0.0.1", int port = 5000)
+    {
+        _host = host;
+        _port = port;
+    }
 
-				// 尝试解析为ServerMessage
-				try
-				{
-					var message = JsonSerializer.Deserialize<ServerMessage>(line, new JsonSerializerOptions
-					{
-						PropertyNameCaseInsensitive = true
-					});
-					if (message != null)
-					{
-						OnMessageReceived?.Invoke(message);
-					}
-				}
-				catch
-				{
-					// 不是JSON消息，可能是系统消息
-				}
-			}
-		}
-		catch (OperationCanceledException)
-		{
-			// 正常取消
-		}
-		catch (Exception ex)
-		{
-			OnError?.Invoke($"Receive error: {ex.Message}");
-			OnDisconnected?.Invoke();
-		}
-	}
+    /// <summary>
+    /// 连接到服务器
+    /// </summary>
+    public async Task<bool> ConnectAsync()
+    {
+        try
+        {
+            _client = new TcpClient();
+            await _client.ConnectAsync(_host, _port);
+            _stream = _client.GetStream();
 
-	private async Task SendAsync(ClientMessage message)
-	{
-		if (_writer == null) return;
+            _cts = new CancellationTokenSource();
+            _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
+            _heartbeatTask = Task.Run(() => HeartbeatLoopAsync(_cts.Token));
 
-		try
-		{
-			var json = JsonSerializer.Serialize(message);
-			await _writer.WriteLineAsync(json);
-		}
-		catch (Exception ex)
-		{
-			OnError?.Invoke($"Send error: {ex.Message}");
-		}
-	}
+            if (OnConnected != null)
+                await OnConnected();
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (OnError != null)
+                await OnError($"连接失败: {ex.Message}");
+            return false;
+        }
+    }
 
-	public async Task JoinRoomAsync(string playerName)
-	{
-		await SendAsync(new ClientMessage
-		{
-			Type = ClientMessageType.JoinRoom,
-			PayLoad = playerName
-		});
-	}
+    /// <summary>
+    /// 接收消息循环
+    /// </summary>
+    private async Task ReceiveLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && _stream != null)
+            {
+                var message = await ReceiveMessageAsync(ct);
+                if (message == null) continue;
 
-	public async Task SendActionAsync(ActionType action, int amount = 0)
-	{
-		await SendAsync(new ClientMessage
-		{
-			Type = ClientMessageType.PlayerAction,
-			Action = action,
-			PayLoad = amount
-		});
-	}
+                if (OnMessageReceived != null)
+                    await OnMessageReceived(message);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常取消
+        }
+        catch (Exception ex)
+        {
+            if (OnError != null)
+                await OnError($"接收错误: {ex.Message}");
+            if (OnDisconnected != null)
+                await OnDisconnected();
+        }
+    }
 
-	private void Disconnect()
-	{
-		_cts?.Cancel();
-		_client?.Close();
-		_client?.Dispose();
-		_client = null;
-		_reader = null;
-		_writer = null;
-	}
+    /// <summary>
+    /// 接收一条消息
+    /// </summary>
+    private async Task<ServerMessage?> ReceiveMessageAsync(CancellationToken ct)
+    {
+        if (_stream == null) return null;
 
-	public void Dispose()
-	{
-		Disconnect();
-		_cts?.Dispose();
-		GC.SuppressFinalize(this);
-	}
+        // 读取4字节长度头（大端序）
+        var lengthBuffer = new byte[4];
+        var bytesRead = 0;
+
+        while (bytesRead < 4)
+        {
+            var read = await _stream.ReadAsync(lengthBuffer.AsMemory(bytesRead, 4 - bytesRead), ct);
+            if (read == 0)
+            {
+                if (OnDisconnected != null)
+                    await OnDisconnected();
+                throw new IOException("连接已关闭");
+            }
+            bytesRead += read;
+        }
+
+        var length = BinaryPrimitives.ReadInt32BigEndian(lengthBuffer);
+        if (length <= 0 || length > 1024 * 1024) // 最大1MB
+        {
+            throw new InvalidDataException($"无效的消息长度: {length}");
+        }
+
+        // 读取JSON Body
+        var bodyBuffer = new byte[length];
+        bytesRead = 0;
+
+        while (bytesRead < length)
+        {
+            var read = await _stream.ReadAsync(bodyBuffer.AsMemory(bytesRead, length - bytesRead), ct);
+            if (read == 0)
+            {
+                throw new IOException("读取消息体时连接断开");
+            }
+            bytesRead += read;
+        }
+
+        var json = Encoding.UTF8.GetString(bodyBuffer);
+        return JsonSerializer.Deserialize<ServerMessage>(json, JsonOptions);
+    }
+
+    /// <summary>
+    /// 心跳循环
+    /// </summary>
+    private async Task HeartbeatLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+                await SendMessageAsync(new ClientMessage { Type = ClientMessageType.Heartbeat });
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // 忽略心跳错误
+            }
+        }
+    }
+
+    /// <summary>
+    /// 发送消息
+    /// </summary>
+    public async Task SendMessageAsync(ClientMessage message)
+    {
+        if (_stream == null) return;
+
+        await _sendLock.WaitAsync();
+        try
+        {
+            var json = JsonSerializer.Serialize(message, JsonOptions);
+            var bodyBytes = Encoding.UTF8.GetBytes(json);
+            
+            var lengthBuffer = new byte[4];
+            BinaryPrimitives.WriteInt32BigEndian(lengthBuffer, bodyBytes.Length);
+
+            await _stream.WriteAsync(lengthBuffer);
+            await _stream.WriteAsync(bodyBytes);
+            await _stream.FlushAsync();
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 加入房间
+    /// </summary>
+    public async Task JoinRoomAsync(string playerName)
+    {
+        await SendMessageAsync(new ClientMessage
+        {
+            Type = ClientMessageType.JoinRoom,
+            PlayerName = playerName
+        });
+    }
+
+    /// <summary>
+    /// 发送玩家行动
+    /// </summary>
+    public async Task SendActionAsync(ActionType action, int amount = 0)
+    {
+        await SendMessageAsync(new ClientMessage
+        {
+            Type = ClientMessageType.PlayerAction,
+            Action = action,
+            Amount = amount
+        });
+    }
+
+    /// <summary>
+    /// 选择亮牌
+    /// </summary>
+    public async Task ShowCardsAsync()
+    {
+        await SendMessageAsync(new ClientMessage
+        {
+            Type = ClientMessageType.ShowCards
+        });
+    }
+
+    /// <summary>
+    /// 选择盖牌
+    /// </summary>
+    public async Task MuckCardsAsync()
+    {
+        await SendMessageAsync(new ClientMessage
+        {
+            Type = ClientMessageType.MuckCards
+        });
+    }
+
+    /// <summary>
+    /// 断开连接
+    /// </summary>
+    public async Task DisconnectAsync()
+    {
+        _cts?.Cancel();
+        
+        if (_receiveTask != null)
+        {
+            try { await _receiveTask; } catch { /* ignored */ }
+        }
+        
+        if (_heartbeatTask != null)
+        {
+            try { await _heartbeatTask; } catch { /* ignored */ }
+        }
+
+        _stream?.Close();
+        _client?.Close();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisconnectAsync();
+        _cts?.Dispose();
+        _sendLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

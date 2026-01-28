@@ -33,7 +33,7 @@ public class GameRoomController : IAsyncDisposable
     }
 
     /// <summary>
-    /// 启动控制器
+    /// 启动控制器。
     /// </summary>
     public async Task StartAsync()
     {

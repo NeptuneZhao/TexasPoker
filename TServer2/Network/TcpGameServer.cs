@@ -50,6 +50,7 @@ public class TcpGameServer(int port) : IAsyncDisposable
                 session.OnMessageReceived += async (s, m) =>
                 {
                     if (OnMessageReceived != null)
+                        // s is a session, m is the message
                         await OnMessageReceived(s, m);
                 };
 
@@ -64,7 +65,7 @@ public class TcpGameServer(int port) : IAsyncDisposable
                 if (OnClientConnected != null)
                     await OnClientConnected(session);
 
-                // 开始接收消息（不等待）
+                // 接收消息
                 _ = session.StartReceivingAsync();
             }
         }
@@ -74,7 +75,7 @@ public class TcpGameServer(int port) : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Logger.Error($"Server error: {ex.Message}");
+            Logger.Fatal($"Server fatal error: {ex.Message}");
             throw;
         }
     }

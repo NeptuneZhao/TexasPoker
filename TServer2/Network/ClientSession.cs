@@ -36,7 +36,7 @@ public class ClientSession : IAsyncDisposable
     {
         _client = client;
         _stream = client.GetStream();
-        _client.ReceiveTimeout = 0; // 无超时，我们用CancellationToken控制
+        _client.ReceiveTimeout = 0; // 用 CancellationToken 控制
         _client.SendTimeout = 5000;
     }
 
@@ -111,7 +111,7 @@ public class ClientSession : IAsyncDisposable
         
         var messageLength = BitConverter.ToInt32(lengthBuffer, 0);
         
-        if (messageLength <= 0 || messageLength > 1024 * 1024) // 最大1MB
+        if (messageLength is <= 0 or > 1024 * 1024) // 最大1MB
         {
             Logger.Warn($"[Session {SessionId}] Invalid message length: {messageLength}");
             return null;
