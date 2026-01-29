@@ -1,21 +1,12 @@
 namespace TClient.Model;
 
-/// <summary>
-/// 扑克牌
-/// </summary>
 public class Card
 {
     public Suit Suit { get; init; }
     public Rank Rank { get; init; }
-
-    /// <summary>
-    /// 获取牌面显示字符串（如 ♠A, ♥K）
-    /// </summary>
-    public string Display => $"{SuitSymbol}{RankSymbol}";
-
-    /// <summary>
-    /// 花色符号
-    /// </summary>
+    
+    public string Display => $"{SuitSymbol} {RankSymbol}";
+    
     private string SuitSymbol => Suit switch
     {
         Suit.Clubs => "♣",
@@ -24,10 +15,7 @@ public class Card
         Suit.Spades => "♠",
         _ => "?"
     };
-
-    /// <summary>
-    /// 点数符号
-    /// </summary>
+    
     private string RankSymbol => Rank switch
     {
         Rank.Two => "2",
@@ -45,10 +33,7 @@ public class Card
         Rank.Ace => "A",
         _ => "?"
     };
-
-    /// <summary>
-    /// 是否为红色花色
-    /// </summary>
+    
     public bool IsRed => Suit is Suit.Hearts or Suit.Diamonds;
 
     public override string ToString() => Display;

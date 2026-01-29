@@ -367,8 +367,8 @@ public class SpectreRenderer
     private static Markup BuildFooter(GameState state)
     {
         var text = "[dim][[F]]弃牌 [[C]]跟注 [[K]]过牌 [[B]]下注 [[R]]加注 [[A]]全下 | [[S]]亮牌 [[M]]盖牌 | [[Q]]退出[/]";
-        if (!string.IsNullOrEmpty(state.LastMessage))
-            text = $"[bold]{Markup.Escape(state.LastMessage)}[/]\n" + text;
+        if (!string.IsNullOrEmpty(GameState.LastMessage))
+            text = $"[bold]{Markup.Escape(GameState.LastMessage)}[/]\n" + text;
         
         return new Markup(text);
     }

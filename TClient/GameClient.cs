@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using Spectre.Console;
+
 using TClient.Model;
 using TClient.Network;
 using TClient.Protocol;
@@ -7,9 +8,6 @@ using TClient.UI;
 
 namespace TClient;
 
-/// <summary>
-/// 游戏客户端主控制器
-/// </summary>
 public class GameClient : IAsyncDisposable
 {
     private TcpGameClient? _network;
@@ -25,25 +23,19 @@ public class GameClient : IAsyncDisposable
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
-
-    /// <summary>
-    /// 运行客户端
-    /// </summary>
+    
     public async Task RunAsync()
     {
         Console.Title = "Texas Hold'em Poker Client";
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-        // 显示欢迎界面
+        // 欢迎
         ShowWelcome();
 
-        // 获取连接信息
+        // 连接信息
         var playerName = GetPlayerName();
         var host = GetConnectionInfo();
         
-        // 创建网络客户端
-        // 先检测 127.0.0.1:5000 是否可达
-        // 不能就连接 124.70.67.4:5000
         _network = new TcpGameClient(host);
         RegisterNetworkEvents();
 
@@ -66,34 +58,25 @@ public class GameClient : IAsyncDisposable
 
         _renderer.AddLog($"已加入房间，玩家名: {playerName}", "green");
         _renderer.AddLog("等待游戏开始 (需要4名玩家)...", "yellow");
-
-        // 启动带Live显示的主循环
+        
         var live = AnsiConsole.Live(BuildCurrentLayout())
             .AutoClear(false)
             .Overflow(VerticalOverflow.Ellipsis)
             .Cropping(VerticalOverflowCropping.Top);
         
-        // TODO: why it is BUG
         await live.StartAsync(async ctx =>
         {
             _liveContext = ctx;
             await MainLoopAsync(ctx);
         });
-
         
-        // Game over
     }
-
-    /// <summary>
-    /// 显示欢迎界面
-    /// </summary>
+    
     private static void ShowWelcome()
     {
         AnsiConsole.Clear();
         
-        var title = new FigletText("Texas Poker")
-            .Centered()
-            .Color(Color.Yellow);
+        var title = new FigletText("Texas Poker").Centered().Color(Color.Yellow);
         
         AnsiConsole.Write(title);
         AnsiConsole.WriteLine();
@@ -111,10 +94,7 @@ public class GameClient : IAsyncDisposable
         AnsiConsole.Write(panel);
         AnsiConsole.WriteLine();
     }
-
-    /// <summary>
-    /// 获取连接信息
-    /// </summary>
+    
     private static string GetConnectionInfo()
     {
         string[] hosts = ["127.0.0.1", "www.halfcooler.cn", "mc.halfcooler.cn"];
@@ -149,10 +129,7 @@ public class GameClient : IAsyncDisposable
             "[cyan]你的名字:[/]",
             $"Player{Random.Shared.Next(1000, 9999)}");
     }
-
-    /// <summary>
-    /// 注册网络事件
-    /// </summary>
+    
     private void RegisterNetworkEvents()
     {
         if (_network == null) return;
@@ -181,10 +158,7 @@ public class GameClient : IAsyncDisposable
 
         _network.OnMessageReceived += ProcessServerMessageAsync;
     }
-
-    /// <summary>
-    /// 主循环
-    /// </summary>
+    
     private async Task MainLoopAsync(LiveDisplayContext ctx)
     {
         // 启动输入处理任务
@@ -194,7 +168,7 @@ public class GameClient : IAsyncDisposable
             {
                 try
                 {
-                    // 使用 ReadKey 会阻塞，但在单独的任务中运行不会影响 UI
+                    // 使用 ReadKey 会阻塞
                     if (Console.KeyAvailable)
                     {
                         var key = Console.ReadKey(true);
@@ -221,7 +195,9 @@ public class GameClient : IAsyncDisposable
             }
             catch (ArgumentOutOfRangeException)
             {
-                // 终端尺寸太小导致的渲染错误，忽略
+                Console.Beep();
+                // 终端尺寸太小导致的渲染错误
+                // 下次再渲染
             }
             catch
             {
@@ -246,10 +222,7 @@ public class GameClient : IAsyncDisposable
             // 忽略最终渲染错误
         }
     }
-
-    /// <summary>
-    /// 构建当前布局
-    /// </summary>
+    
     private Layout BuildCurrentLayout()
     {
         lock (_stateLock)
@@ -258,9 +231,6 @@ public class GameClient : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// 刷新显示
-    /// </summary>
     private void RefreshDisplay()
     {
         try
@@ -277,14 +247,12 @@ public class GameClient : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// 处理键盘输入
-    /// </summary>
+    
     private async Task HandleInputAsync(ConsoleKeyInfo key)
     {
         if (_network == null) return;
 
-        // Q键退出
+        // Q 键退出
         if (key.Key == ConsoleKey.Q)
         {
             _isRunning = false;
@@ -300,6 +268,7 @@ public class GameClient : IAsyncDisposable
 
         if (isShowdown)
         {
+            // ReSharper disable once SwitchStatementMissingSomeEnumCasesNoDefault
             switch (key.Key)
             {
                 case ConsoleKey.S:
@@ -423,6 +392,7 @@ public class GameClient : IAsyncDisposable
             var k = Console.ReadKey(true);
             if (k.Key == ConsoleKey.Enter)
                 break;
+            // ReSharper Disable once SwitchStatementHandlesSomeKnownEnumValuesWithDefault
             switch (k.Key)
             {
                 case ConsoleKey.Escape:

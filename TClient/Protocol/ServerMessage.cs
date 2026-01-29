@@ -1,45 +1,37 @@
 ﻿namespace TClient.Protocol;
 
-/// <summary>
-/// 服务端发送的消息类型（与TServer2同步）
-/// </summary>
 public enum ServerMessageType
 {
-    JoinSuccess,
-    PlayerJoined,
-    PlayerLeft,
-    CountdownStarted,
-    CountdownUpdate,
-    GameStarted,
-    HoleCards,
-    NewHandStarted,
-    BlindsPosted,
-    ActionRequest,
-    PlayerActed,
-    PhaseChanged,
-    CommunityCards,
-    ShowdownRequest,
-    PlayerShowedCards,
-    PotDistribution,
-    HandEnded,
-    GameOver,
-    GameState,
-    Error,
-    Heartbeat
+    JoinSuccess,       // 加入成功
+    PlayerJoined,      // 玩家加入
+    PlayerLeft,        // 玩家离开
+    CountdownStarted,  // 倒计时开始
+    CountdownUpdate,   // 倒计时更新
+    GameStarted,       // 游戏开始
+    HoleCards,         // 发牌到手牌
+    NewHandStarted,    // 新手牌
+    BlindsPosted,      // 下盲注
+    ActionRequest,     // 行动请求
+    PlayerActed,       // 玩家行动
+    PhaseChanged,      // 阶段变化
+    CommunityCards,    // 公共牌
+    ShowdownRequest,   // 摊牌请求
+    PlayerShowedCards, // 玩家摊牌
+    PotDistribution,   // 底池分配
+    HandEnded,         // 手牌结束
+    GameOver,          // 游戏结束
+    GameState,         // 游戏状态
+    Error,             // 错误消息
+    Heartbeat          // 心跳检测
 }
 
-/// <summary>
-/// 服务端消息
-/// </summary>
 public class ServerMessage
 {
-    public ServerMessageType Type { get; set; }
-    public object? Payload { get; set; }
+    public ServerMessageType Type { get; init; }
+    public object? Payload { get; init; }
 }
 
-#region Payload Types
-
-public class JoinSuccessPayload
+public abstract class JoinSuccessPayload
 {
     public string PlayerId { get; set; } = string.Empty;
     public string PlayerName { get; set; } = string.Empty;
@@ -48,7 +40,7 @@ public class JoinSuccessPayload
     public List<PlayerDto> ExistingPlayers { get; set; } = [];
 }
 
-public class PlayerJoinedPayload
+public abstract class PlayerJoinedPayload
 {
     public PlayerDto Player { get; set; } = new();
     public int CurrentPlayerCount { get; set; }
@@ -56,14 +48,14 @@ public class PlayerJoinedPayload
     public int MaxPlayers { get; set; }
 }
 
-public class PlayerLeftPayload
+public abstract class PlayerLeftPayload
 {
     public string PlayerId { get; set; } = string.Empty;
     public string PlayerName { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
 }
 
-public class CountdownStartedPayload
+public abstract class CountdownStartedPayload
 {
     public int Seconds { get; set; }
 }
@@ -217,8 +209,6 @@ public class ErrorPayload
     public string Message { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
 }
-
-#endregion
 
 #region DTO Types
 
