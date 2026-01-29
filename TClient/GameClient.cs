@@ -38,14 +38,16 @@ public class GameClient : IAsyncDisposable
         ShowWelcome();
 
         // 获取连接信息
-        var (host, port) = GetConnectionInfo();
         var playerName = GetPlayerName();
-
+        var host = GetConnectionInfo();
+        
         // 创建网络客户端
-        _network = new TcpGameClient(host, port);
+        // 先检测 127.0.0.1:5000 是否可达
+        // 不能就连接 124.70.67.4:5000
+        _network = new TcpGameClient(host);
         RegisterNetworkEvents();
 
-        _renderer.AddLog($"正在连接到 {host}:{port}...", "yellow");
+        _renderer.AddLog($"正在连接到 {host}:{5000}...", "yellow");
 
         // 连接服务器
         if (!await _network.ConnectAsync())
@@ -113,17 +115,29 @@ public class GameClient : IAsyncDisposable
     /// <summary>
     /// 获取连接信息
     /// </summary>
-    private static (string host, int port) GetConnectionInfo()
+    private static string GetConnectionInfo()
     {
-        var input = AnsiConsole.Ask<string>(
-            "[cyan]服务器地址[/] [dim](默认: 127.0.0.1:5000)[/]:",
-            "127.0.0.1:5000");
+        string[] hosts = ["127.0.0.1", "www.halfcooler.cn", "mc.halfcooler.cn"];
+        const int port = 5000;
 
-        var parts = input.Split(':');
-        var host = parts[0];
-        var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 5000;
+        foreach (var host in hosts)
+        {
+            try
+            {
+                using var client = new System.Net.Sockets.TcpClient();
+                // 尝试在 300 毫秒内连接
+                if (client.ConnectAsync(host, port).Wait(300))
+                {
+                    return host;
+                }
+            }
+            catch
+            {
+                // 忽略错误并尝试下一个
+            }
+        }
 
-        return (host, port);
+        return "www.halfcooler.cn"; // 默认返回
     }
 
     /// <summary>
@@ -214,7 +228,7 @@ public class GameClient : IAsyncDisposable
                 // 忽略其他渲染错误
             }
 
-            await Task.Delay(100); // 10 FPS，降低刷新率以减少资源占用
+            await Task.Delay(200); // 5 FPS，降低刷新率以减少资源占用
         }
 
         // 等待输入任务结束

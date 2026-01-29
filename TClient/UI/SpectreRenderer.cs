@@ -11,7 +11,7 @@ public class SpectreRenderer
 {
     private readonly Lock _lock = new();
     private readonly List<LogEntry> _logs = [];
-    private const int MaxLogs = 8;
+    private const int MaxLogs = 5;
 
     /// <summary>
     /// 添加日志
@@ -34,12 +34,12 @@ public class SpectreRenderer
         // 使用比例而非固定大小，避免在小终端引发异常
         var layout = new Layout("Root")
             .SplitRows(
-                new Layout("Header").Size(3),
+                new Layout("Header").Size(2),
                 new Layout("Main").SplitColumns(
                     new Layout("Left").Ratio(2),
                     new Layout("Right").Ratio(1)
                 ),
-                new Layout("Footer").Size(5)
+                new Layout("Footer").Size(3)
             );
 
         // 头部标题
@@ -48,8 +48,8 @@ public class SpectreRenderer
         // 左侧主区域
         var leftLayout = new Layout("LeftContent")
             .SplitRows(
-                new Layout("Table").Size(14),
-                new Layout("Hand").Size(8),
+                new Layout("Table").Size(9),
+                new Layout("Hand").Size(5),
                 new Layout("Logs")
             );
 
@@ -63,7 +63,7 @@ public class SpectreRenderer
         var rightLayout = new Layout("RightContent")
             .SplitRows(
                 new Layout("Players"),
-                new Layout("Actions").Size(10)
+                new Layout("Actions").Size(8)
             );
 
         rightLayout["Players"].Update(BuildPlayersPanel(state));
@@ -80,18 +80,8 @@ public class SpectreRenderer
     /// <summary>
     /// 构建头部标题
     /// </summary>
-    private static Panel BuildHeader(GameState state)
+    private static IRenderable BuildHeader(GameState state)
     {
-        var title = new Rule("[bold yellow]♠ ♥ TEXAS HOLD'EM POKER ♦ ♣[/]")
-        {
-            Justification = Justify.Center,
-            Style = Style.Parse("yellow")
-        };
-
-        var grid = new Grid();
-        grid.AddColumn();
-        grid.AddRow(title);
-
         var phaseColor = state.Phase switch
         {
             "Waiting" => "grey",
@@ -104,18 +94,13 @@ public class SpectreRenderer
         };
 
         var statusText = state.IsCountingDown
-            ? $"[{phaseColor}]● {state.Phase}[/] | [yellow]开始倒计时: {state.CountdownSeconds}s[/]"
-            : $"[{phaseColor}]● {state.Phase}[/] | 第 {state.HandNumber} 手";
+            ? $"[bold yellow]♠♥♦♣[/] [{phaseColor}]{state.Phase}[/] | [yellow]倒计时: {state.CountdownSeconds}s[/]"
+            : $"[bold yellow]♠♥♦♣ TEXAS POKER[/] [{phaseColor}]{state.Phase}[/] | 第{state.HandNumber}手";
 
         if (state.IsMyTurn)
-            statusText += " | [blink bold green]>>> 轮到你行动 <<<[/]";
+            statusText += " | [blink bold green]>>> 轮到你 <<<[/]";
 
-        grid.AddRow(new Markup(statusText));
-
-        return new Panel(grid)
-            .Border(BoxBorder.Double)
-            .BorderColor(Color.Yellow)
-            .Padding(0, 0);
+        return new Markup(statusText);
     }
 
     /// <summary>
@@ -127,34 +112,25 @@ public class SpectreRenderer
         grid.AddColumn(new GridColumn().NoWrap());
 
         // 公共牌
-        grid.AddRow(new Markup("[bold cyan]公共牌[/]"));
         grid.AddRow(BuildCommunityCards(state.CommunityCards));
 
-        // 底池信息
-        grid.AddEmptyRow();
-        var potText = BuildPotText(state.Pots);
-        grid.AddRow(potText);
-
-        // 位置信息
+        // 底池信息 + 位置信息
+        var potTotal = state.Pots.Sum(p => p.Amount);
+        var potText = $"[bold yellow]💰 底池: ${potTotal}[/]";
+        
         if (state.DealerSeatIndex >= 0)
-        {
-            grid.AddEmptyRow();
-            var positionText = $"[dim]D: 座位{state.DealerSeatIndex}[/] | " +
-                               $"[dim]SB: 座位{state.SmallBlindSeatIndex}[/] | " +
-                               $"[dim]BB: 座位{state.BigBlindSeatIndex}[/]";
-            grid.AddRow(new Markup(positionText));
-        }
-
-        // 当前下注信息
+            potText += $" [dim]| D:{state.DealerSeatIndex} SB:{state.SmallBlindSeatIndex} BB:{state.BigBlindSeatIndex}[/]";
+        
         if (state.CurrentBet > 0)
-        {
-            grid.AddRow(new Markup($"[yellow]当前最高下注: ${state.CurrentBet}[/]"));
-        }
+            potText += $" [yellow]| 当前注:${state.CurrentBet}[/]";
+
+        grid.AddRow(new Markup(potText));
 
         return new Panel(grid)
             .Header("[bold green]🎴 牌桌[/]")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Green)
+            .Padding(0, 0)
             .Expand();
     }
 
@@ -168,7 +144,7 @@ public class SpectreRenderer
             .HideHeaders();
 
         for (var i = 0; i < 5; i++)
-            table.AddColumn(new TableColumn("").Width(8));
+            table.AddColumn(new TableColumn("").Width(6));
 
         var row = new List<IRenderable>();
         for (var i = 0; i < 5; i++)
@@ -199,26 +175,6 @@ public class SpectreRenderer
     }
 
     /// <summary>
-    /// 构建底池文本
-    /// </summary>
-    private static IRenderable BuildPotText(List<PotInfo> pots)
-    {
-        if (pots.Count == 0)
-            return new Markup("[dim]底池: $0[/]");
-
-        var total = pots.Sum(p => p.Amount);
-        var text = $"[bold yellow]💰 总底池: ${total}[/]";
-
-        if (pots.Count > 1)
-        {
-            var details = string.Join(" | ", pots.Select(p => $"{p.Name}: ${p.Amount}"));
-            text += $"\n[dim]({details})[/]";
-        }
-
-        return new Markup(text);
-    }
-
-    /// <summary>
     /// 构建手牌面板
     /// </summary>
     private static IRenderable BuildHandPanel(GameState state)
@@ -231,43 +187,43 @@ public class SpectreRenderer
             .Border(TableBorder.None)
             .HideHeaders();
 
-        handTable.AddColumn(new TableColumn("").Width(10));
-        handTable.AddColumn(new TableColumn("").Width(10));
+        handTable.AddColumn(new TableColumn("").Width(6));
+        handTable.AddColumn(new TableColumn("").Width(6));
+        handTable.AddColumn(new TableColumn(""));
+
+        // 筹码信息
+        var chipsText = $"[yellow]筹码:${state.MyChips}[/]";
+        if (state is { CallAmount: > 0, IsMyTurn: true })
+            chipsText += $" [cyan]跟注:${state.CallAmount}[/]";
 
         switch (state.MyHand.Count)
         {
             case >= 2:
                 handTable.AddRow(
                     BuildCardDisplay(state.MyHand[0]),
-                    BuildCardDisplay(state.MyHand[1])
+                    BuildCardDisplay(state.MyHand[1]),
+                    new Markup(chipsText)
                 );
                 break;
             case 1:
                 handTable.AddRow(
                     BuildCardDisplay(state.MyHand[0]),
-                    BuildEmptyCard()
+                    BuildEmptyCard(),
+                    new Markup(chipsText)
                 );
                 break;
             default:
-                handTable.AddRow(BuildEmptyCard(), BuildEmptyCard());
+                handTable.AddRow(BuildEmptyCard(), BuildEmptyCard(), new Markup(chipsText));
                 break;
         }
 
         grid.AddRow(handTable);
 
-        // 筹码信息
-        grid.AddEmptyRow();
-        var chipsText = $"[bold yellow]筹码: ${state.MyChips}[/]";
-        if (state is { CallAmount: > 0, IsMyTurn: true })
-        {
-            chipsText += $"  |  [cyan]跟注需: ${state.CallAmount}[/]";
-        }
-        grid.AddRow(new Markup(chipsText));
-
         return new Panel(grid)
-            .Header($"[bold blue]🎴 你的手牌 ({state.MyPlayerName}) - 座位 {state.MySeatIndex}[/]")
+            .Header($"[bold blue]🎴 {state.MyPlayerName} (座位{state.MySeatIndex})[/]")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Blue)
+            .Padding(0, 0)
             .Expand();
     }
 
@@ -279,11 +235,10 @@ public class SpectreRenderer
         var table = new Table()
             .Border(TableBorder.Simple)
             .BorderColor(Color.Grey)
-            .AddColumn(new TableColumn("[bold]座位[/]").Width(4))
-            .AddColumn(new TableColumn("[bold]玩家[/]").Width(10))
-            .AddColumn(new TableColumn("[bold]筹码[/]").Width(8))
-            .AddColumn(new TableColumn("[bold]下注[/]").Width(6))
-            .AddColumn(new TableColumn("[bold]状态[/]").Width(8));
+            .AddColumn(new TableColumn("[bold]#[/]").Width(3))
+            .AddColumn(new TableColumn("[bold]玩家[/]").Width(8))
+            .AddColumn(new TableColumn("[bold]$[/]").Width(6))
+            .AddColumn(new TableColumn("[bold]状态[/]").Width(6));
 
         foreach (var player in state.Players.OrderBy(p => p.SeatIndex))
         {
@@ -304,25 +259,27 @@ public class SpectreRenderer
 
             var nameText = $"[{nameStyle}]{player.Name}[/]";
             if (isActing)
-                nameText = "▶ " + nameText;
+                nameText = "▶" + nameText;
 
-            var chipsText = $"${player.Chips}";
-            var betText = player.CurrentBet > 0 ? $"${player.CurrentBet}" : "-";
+            // 筹码/下注
+            var chipsText = player.CurrentBet > 0 
+                ? $"{player.Chips}[dim]/{player.CurrentBet}[/]" 
+                : $"{player.Chips}";
 
             string statusText;
             if (player.HasFolded)
-                statusText = "[dim grey]弃牌[/]";
+                statusText = "[dim]弃[/]";
             else if (player.IsAllIn)
-                statusText = "[bold red]ALL-IN[/]";
+                statusText = "[red]全下[/]";
             else if (!player.IsConnected)
-                statusText = "[dim red]离线[/]";
+                statusText = "[red]离线[/]";
             else
-                statusText = "[green]在场[/]";
+                statusText = "[green]●[/]";
 
             // 如果有亮牌
             if (player.ShownCards is { Count: > 0 })
             {
-                var cardsStr = string.Join(" ", player.ShownCards.Select(c => c.Display));
+                var cardsStr = string.Join("", player.ShownCards.Select(c => c.Display));
                 nameText += $"\n[dim]{cardsStr}[/]";
                 if (!string.IsNullOrEmpty(player.HandRank))
                     statusText += $"\n[cyan]{player.HandRank}[/]";
@@ -332,7 +289,6 @@ public class SpectreRenderer
                 new Markup(seatText),
                 new Markup(nameText),
                 new Markup(chipsText),
-                new Markup(betText),
                 new Markup(statusText)
             );
         }
@@ -354,32 +310,29 @@ public class SpectreRenderer
 
         if (state.IsShowdownRequest)
         {
-            grid.AddRow(new Markup("[bold cyan]摊牌选择:[/]"));
-            grid.AddRow(new Markup("  [bold green][S][/] 亮牌"));
-            grid.AddRow(new Markup("  [bold red][M][/] 盖牌"));
+            grid.AddRow(new Markup("[bold cyan]摊牌:[/] [green][S][/]亮牌 [red][M][/]盖牌"));
         }
         else if (state is { IsMyTurn: true, AvailableActions.Count: > 0 })
         {
-            grid.AddRow(new Markup("[bold green]可用操作:[/]"));
             foreach (var action in state.AvailableActions)
             {
                 var key = GetActionKey(action.Type);
                 var desc = GetActionDescription(action);
-                grid.AddRow(new Markup($"  [bold yellow][{key}][/] {desc}"));
+                grid.AddRow(new Markup($"[yellow][{key}][/] {desc}"));
             }
         }
         else
         {
-            grid.AddRow(new Markup("[dim]等待其他玩家...[/]"));
+            grid.AddRow(new Markup("[dim]等待中...[/]"));
         }
 
-        grid.AddEmptyRow();
-        grid.AddRow(new Markup("[dim][red] 退出游戏[/][/]"));
+        grid.AddRow(new Markup("[dim red][[Q]]退出[/]"));
 
         return new Panel(grid)
-            .Header("[bold yellow]⌨️ 操作[/]")
+            .Header("[yellow]⌨️ 操作[/]")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Yellow)
+            .Padding(0, 0)
             .Expand();
     }
 
@@ -400,41 +353,24 @@ public class SpectreRenderer
             }
         }
 
-        // 填充空行
-        lock (_lock)
-        {
-            for (int i = _logs.Count; i < MaxLogs; i++)
-            {
-                grid.AddEmptyRow();
-            }
-        }
-
         return new Panel(grid)
-            .Header("[bold cyan]📜 日志[/]")
+            .Header("[cyan]📜 日志[/]")
             .Border(BoxBorder.Rounded)
             .BorderColor(Color.Aqua)
+            .Padding(0, 0)
             .Expand();
     }
 
     /// <summary>
     /// 构建底部状态栏
     /// </summary>
-    private static IRenderable BuildFooter(GameState state)
+    private static Markup BuildFooter(GameState state)
     {
-        var grid = new Grid();
-        grid.AddColumn();
-
+        var text = "[dim][[F]]弃牌 [[C]]跟注 [[K]]过牌 [[B]]下注 [[R]]加注 [[A]]全下 | [[S]]亮牌 [[M]]盖牌 | [[Q]]退出[/]";
         if (!string.IsNullOrEmpty(state.LastMessage))
-        {
-            grid.AddRow(new Markup($"[bold]{Markup.Escape(state.LastMessage)}[/]"));
-        }
-
-        grid.AddRow(new Markup("[dim]按键操作: [[F]]弃牌 [[C]]跟注 [[K]]过牌 [[B]]下注 [[R]]加注 [[A]]全下 | [[S]]亮牌 [[M]]盖牌 | [[Q]]退出[/]"));
-
-        return new Panel(grid)
-            .Border(BoxBorder.Rounded)
-            .BorderColor(Color.Grey)
-            .Padding(1, 0);
+            text = $"[bold]{Markup.Escape(state.LastMessage)}[/]\n" + text;
+        
+        return new Markup(text);
     }
 
     /// <summary>
