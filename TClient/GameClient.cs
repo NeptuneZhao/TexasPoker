@@ -66,15 +66,20 @@ public class GameClient : IAsyncDisposable
         _renderer.AddLog("等待游戏开始 (需要4名玩家)...", "yellow");
 
         // 启动带Live显示的主循环
-        await AnsiConsole.Live(BuildCurrentLayout())
+        var live = AnsiConsole.Live(BuildCurrentLayout())
             .AutoClear(false)
             .Overflow(VerticalOverflow.Ellipsis)
-            .Cropping(VerticalOverflowCropping.Top)
-            .StartAsync(async ctx =>
-            {
-                _liveContext = ctx;
-                await MainLoopAsync(ctx);
-            });
+            .Cropping(VerticalOverflowCropping.Top);
+        
+        // TODO: why it is BUG
+        await live.StartAsync(async ctx =>
+        {
+            _liveContext = ctx;
+            await MainLoopAsync(ctx);
+        });
+
+        
+        // Game over
     }
 
     /// <summary>
@@ -153,7 +158,7 @@ public class GameClient : IAsyncDisposable
             await Task.CompletedTask;
         };
 
-        _network.OnError += async (error) =>
+        _network.OnError += async error =>
         {
             _renderer.AddLog($"错误: {error}", "red");
             RefreshDisplay();
@@ -168,6 +173,7 @@ public class GameClient : IAsyncDisposable
     /// </summary>
     private async Task MainLoopAsync(LiveDisplayContext ctx)
     {
+        AnsiConsole.WriteLine("Start!!");
         while (_isRunning)
         {
             // 刷新显示
@@ -244,7 +250,7 @@ public class GameClient : IAsyncDisposable
                     return;
                 case ConsoleKey.M:
                     await _network.MuckCardsAsync();
-                    _renderer.AddLog("你选择了盖牌", "grey");
+                    _renderer.AddLog("你选择了盖牌");
                     lock (_stateLock)
                     {
                         _state.IsShowdownRequest = false;
@@ -334,7 +340,7 @@ public class GameClient : IAsyncDisposable
     /// <summary>
     /// 获取金额输入
     /// </summary>
-    private async Task<int> GetAmountInputAsync(string prompt)
+    private static async Task<int> GetAmountInputAsync(string prompt)
     {
         // 暂时使用简单的控制台输入
         // 在实际中可以使用更复杂的UI
@@ -354,20 +360,25 @@ public class GameClient : IAsyncDisposable
             var k = Console.ReadKey(true);
             if (k.Key == ConsoleKey.Enter)
                 break;
-            if (k.Key == ConsoleKey.Escape)
+            switch (k.Key)
             {
-                Console.CursorVisible = false;
-                return 0;
-            }
-            if (k.Key == ConsoleKey.Backspace && input.Length > 0)
-            {
-                input = input[..^1];
-                Console.Write("\b \b");
-            }
-            else if (char.IsDigit(k.KeyChar))
-            {
-                input += k.KeyChar;
-                Console.Write(k.KeyChar);
+                case ConsoleKey.Escape:
+                    Console.CursorVisible = false;
+                    return 0;
+                case ConsoleKey.Backspace when input.Length > 0:
+                    input = input[..^1];
+                    Console.Write("\b \b");
+                    break;
+                default:
+                {
+                    if (char.IsDigit(k.KeyChar))
+                    {
+                        input += k.KeyChar;
+                        Console.Write(k.KeyChar);
+                    }
+
+                    break;
+                }
             }
         }
 
@@ -445,6 +456,8 @@ public class GameClient : IAsyncDisposable
             case ServerMessageType.Heartbeat:
                 // 忽略心跳
                 break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(message));
         }
 
         RefreshDisplay();
@@ -624,10 +637,10 @@ public class GameClient : IAsyncDisposable
 
             // 更新玩家下注
             var sb = _state.Players.FirstOrDefault(p => p.Id == data.SmallBlindPlayerId);
-            if (sb != null) sb.CurrentBet = data.SmallBlindAmount;
+            sb?.CurrentBet = data.SmallBlindAmount;
 
             var bb = _state.Players.FirstOrDefault(p => p.Id == data.BigBlindPlayerId);
-            if (bb != null) bb.CurrentBet = data.BigBlindAmount;
+            bb?.CurrentBet = data.BigBlindAmount;
         }
 
         _renderer.AddLog($"盲注已下: SB ${data.SmallBlindAmount}, BB ${data.BigBlindAmount}", "dim");
@@ -691,10 +704,15 @@ public class GameClient : IAsyncDisposable
                 player.Chips = data.PlayerChipsRemaining;
                 player.CurrentBet += data.Amount;
 
-                if (data.Action == ActionType.Fold)
-                    player.HasFolded = true;
-                else if (data.Action == ActionType.AllIn)
-                    player.IsAllIn = true;
+                switch (data.Action)
+                {
+                    case ActionType.Fold:
+                        player.HasFolded = true;
+                        break;
+                    case ActionType.AllIn:
+                        player.IsAllIn = true;
+                        break;
+                }
             }
 
             // 更新当前下注
@@ -810,7 +828,7 @@ public class GameClient : IAsyncDisposable
             var player = _state.Players.FirstOrDefault(p => p.Id == data.PlayerId);
             if (player != null)
             {
-                if (!data.Mucked && data.Cards.Count > 0)
+                if (data is { Mucked: false, Cards.Count: > 0 })
                 {
                     player.ShownCards = data.Cards.Select(ConvertToCard).ToList();
                     player.HandRank = data.HandEvaluation?.Rank;
@@ -848,12 +866,10 @@ public class GameClient : IAsyncDisposable
                 var style = winner.PlayerId == myId ? "bold green" : "yellow";
                 _renderer.AddLog($"🏆 {winner.PlayerName} 赢得 {pot.PotName} ${winner.AmountWon} [{winner.HandRank}]", style);
 
-                if (winner.PlayerId == myId)
+                if (winner.PlayerId != myId) continue;
+                lock (_stateLock)
                 {
-                    lock (_stateLock)
-                    {
-                        _state.MyChips += winner.AmountWon;
-                    }
+                    _state.MyChips += winner.AmountWon;
                 }
             }
         }
@@ -963,13 +979,13 @@ public class GameClient : IAsyncDisposable
 
     private static T? DeserializePayload<T>(object? payload) where T : class
     {
-        if (payload == null) return null;
-        if (payload is T typed) return typed;
-        if (payload is JsonElement je)
+        return payload switch
         {
-            return JsonSerializer.Deserialize<T>(je.GetRawText(), JsonOptions);
-        }
-        return null;
+            null => null,
+            T typed => typed,
+            JsonElement je => JsonSerializer.Deserialize<T>(je.GetRawText(), JsonOptions),
+            _ => null
+        };
     }
 
     private static PlayerInfo ConvertToPlayerInfo(PlayerDto dto)
