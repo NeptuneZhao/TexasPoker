@@ -31,12 +31,13 @@ public class SpectreRenderer
     /// </summary>
     public Layout BuildLayout(GameState state)
     {
+        // 使用比例而非固定大小，避免在小终端引发异常
         var layout = new Layout("Root")
             .SplitRows(
                 new Layout("Header").Size(3),
                 new Layout("Main").SplitColumns(
-                    new Layout("Left").Size(70),
-                    new Layout("Right").Size(35)
+                    new Layout("Left").Ratio(2),
+                    new Layout("Right").Ratio(1)
                 ),
                 new Layout("Footer").Size(5)
             );

@@ -173,26 +173,64 @@ public class GameClient : IAsyncDisposable
     /// </summary>
     private async Task MainLoopAsync(LiveDisplayContext ctx)
     {
-        AnsiConsole.WriteLine("Start!!");
+        // 启动输入处理任务
+        var inputTask = Task.Run(async () =>
+        {
+            while (_isRunning)
+            {
+                try
+                {
+                    // 使用 ReadKey 会阻塞，但在单独的任务中运行不会影响 UI
+                    if (Console.KeyAvailable)
+                    {
+                        var key = Console.ReadKey(true);
+                        await HandleInputAsync(key);
+                    }
+                    else
+                    {
+                        await Task.Delay(50);
+                    }
+                }
+                catch
+                {
+                    // 忽略输入错误
+                }
+            }
+        });
+
         while (_isRunning)
         {
-            // 刷新显示
-            ctx.UpdateTarget(BuildCurrentLayout());
-
-            // 检查键盘输入
-            if (Console.KeyAvailable)
+            try
             {
-                var key = Console.ReadKey(true);
-                await HandleInputAsync(key);
+                // 刷新显示
+                ctx.UpdateTarget(BuildCurrentLayout());
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // 终端尺寸太小导致的渲染错误，忽略
+            }
+            catch
+            {
+                // 忽略其他渲染错误
             }
 
-            await Task.Delay(50); // 20 FPS
+            await Task.Delay(100); // 10 FPS，降低刷新率以减少资源占用
         }
 
+        // 等待输入任务结束
+        await inputTask;
+
         // 显示退出信息
-        ctx.UpdateTarget(BuildCurrentLayout());
-        _renderer.AddLog("游戏已结束", "yellow");
-        ctx.UpdateTarget(BuildCurrentLayout());
+        try
+        {
+            ctx.UpdateTarget(BuildCurrentLayout());
+            _renderer.AddLog("游戏已结束", "yellow");
+            ctx.UpdateTarget(BuildCurrentLayout());
+        }
+        catch
+        {
+            // 忽略最终渲染错误
+        }
     }
 
     /// <summary>
@@ -211,7 +249,18 @@ public class GameClient : IAsyncDisposable
     /// </summary>
     private void RefreshDisplay()
     {
-        _liveContext?.UpdateTarget(BuildCurrentLayout());
+        try
+        {
+            _liveContext?.UpdateTarget(BuildCurrentLayout());
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // 终端尺寸太小导致的渲染错误，忽略
+        }
+        catch
+        {
+            // 忽略其他渲染错误
+        }
     }
 
     /// <summary>
