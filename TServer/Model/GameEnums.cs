@@ -1,4 +1,4 @@
-﻿namespace TServer2.Model;
+﻿namespace TServer.Model;
 
 /// <summary>
 /// 游戏阶段

@@ -1,7 +1,7 @@
-﻿using TServer2.Logging;
-using TServer2.Model;
+﻿using TServer.Logging;
+using TServer.Model;
 
-namespace TServer2.Game;
+namespace TServer.Game;
 
 /// <summary>
 /// 底池管理器 - 处理主池和边池逻辑

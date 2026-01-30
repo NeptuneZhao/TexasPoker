@@ -1,4 +1,4 @@
-﻿namespace TServer2.Protocol;
+﻿namespace TServer.Protocol;
 
 /// <summary>
 /// 客户端发送的消息类型

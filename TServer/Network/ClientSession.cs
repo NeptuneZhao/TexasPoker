@@ -1,10 +1,10 @@
 ﻿using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using TServer2.Logging;
-using TServer2.Protocol;
+using TServer.Logging;
+using TServer.Protocol;
 
-namespace TServer2.Network;
+namespace TServer.Network;
 
 /// <summary>
 /// 客户端会话 - 处理单个客户端连接

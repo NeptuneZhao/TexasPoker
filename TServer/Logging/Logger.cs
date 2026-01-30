@@ -1,6 +1,6 @@
 ﻿using Spectre.Console;
 
-namespace TServer2.Logging;
+namespace TServer.Logging;
 
 /// <summary>
 /// 日志级别

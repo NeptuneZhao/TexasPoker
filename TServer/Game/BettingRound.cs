@@ -1,8 +1,8 @@
-﻿using TServer2.Logging;
-using TServer2.Model;
-using TServer2.Protocol;
+﻿using TServer.Logging;
+using TServer.Model;
+using TServer.Protocol;
 
-namespace TServer2.Game;
+namespace TServer.Game;
 
 /// <summary>
 /// 下注轮管理器
@@ -104,8 +104,7 @@ public class BettingRound
 
         // 全下 - 只要有筹码就可以
         if (playerChips <= 0) return actions;
-        
-        var allInTotal = player.CurrentBet + playerChips;
+
         actions.Add(new AvailableAction(ActionType.AllIn, $"All-In {playerChips}", playerChips, playerChips));
 
         return actions;

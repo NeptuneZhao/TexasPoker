@@ -8,7 +8,12 @@ namespace TClient;
 public abstract class Program
 {
     public static void Main(string[] args)
-    {
+    { 
+        _ = Task.Run(async () =>
+        {
+            await TServer.Program.Main([]);
+        });
+        
         var builder = WebApplication.CreateSlimBuilder(args);
 
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -111,7 +116,8 @@ public abstract class Program
             var session = sessions.GetSession(sessionId);
             return session == null ? Results.NotFound("会话不存在") : Results.Ok(session.GetLogs());
         });
-
+        
+        app.Urls.Add("http://*:25600");
         app.Run();
     }
 }

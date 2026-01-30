@@ -1,10 +1,10 @@
-﻿using TServer2.Game;
-using TServer2.Logging;
-using TServer2.Model;
-using TServer2.Network;
-using TServer2.Protocol;
+﻿using TServer.Game;
+using TServer.Logging;
+using TServer.Model;
+using TServer.Network;
+using TServer.Protocol;
 
-namespace TServer2.Controller;
+namespace TServer.Controller;
 
 public class GameRoomController : IAsyncDisposable
 {

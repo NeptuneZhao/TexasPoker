@@ -8,5 +8,9 @@
         <PublishAot>true</PublishAot>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\TServer\TServer.csproj" />
+    </ItemGroup>
+
 
 </Project>

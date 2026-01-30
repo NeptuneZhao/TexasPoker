@@ -1,10 +1,10 @@
 ﻿using Spectre.Console;
-using TServer2.Controller;
-using TServer2.Logging;
+using TServer.Controller;
+using TServer.Logging;
 
-namespace TServer2;
+namespace TServer;
 
-internal abstract class Program
+public abstract class Program
 {
     private const int DefaultPort = 5000;
 
@@ -46,10 +46,9 @@ internal abstract class Program
 
         try
         {
-            // 启动服务器（这会阻塞直到取消）
-            var serverTask = controller.StartAsync();
+            _ = controller.StartAsync();
             
-            // 等待取消信号
+            // 等待 Ctrl+C
             try
             {
                 await Task.Delay(Timeout.Infinite, cts.Token);
@@ -82,11 +81,8 @@ internal abstract class Program
         }
         catch
         {
-            // 如果 Spectre.Console 无法渲染，使用简单的文本
-            Console.WriteLine("================================");
-            Console.WriteLine("   TEXAS HOLD'EM POKER SERVER   ");
-            Console.WriteLine("================================");
-            Console.WriteLine();
+            // 正常 Console 输出
+            Console.WriteLine("Texas Hold'em Poker Server!");
         }
     }
 }

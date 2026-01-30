@@ -1,6 +1,6 @@
-﻿using TServer2.Model;
+﻿using TServer.Model;
 
-namespace TServer2.Protocol;
+namespace TServer.Protocol;
 
 /// <summary>
 /// 服务端发送的消息类型

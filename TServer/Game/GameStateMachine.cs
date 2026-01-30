@@ -1,8 +1,8 @@
-﻿using TServer2.Logging;
-using TServer2.Model;
-using TServer2.Protocol;
+﻿using TServer.Logging;
+using TServer.Model;
+using TServer.Protocol;
 
-namespace TServer2.Game;
+namespace TServer.Game;
 
 /// <summary>
 /// 游戏状态机 - 管理单局游戏的生命周期

@@ -1,4 +1,4 @@
-﻿﻿namespace TServer2.Model;
+﻿namespace TServer.Model;
 
 /// <summary>
 /// 扑克牌花色
@@ -68,9 +68,4 @@ public class CardDto(Card card)
 {
     public int Suit { get; } = (int)card.Suit;
     public int Rank { get; } = (int)card.Rank;
-
-    public Card ToCard()
-    {
-        return new Card((Suit)Suit, (Rank)Rank);
-    }
 }

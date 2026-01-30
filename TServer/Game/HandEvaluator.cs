@@ -1,6 +1,6 @@
-﻿using TServer2.Model;
+﻿using TServer.Model;
 
-namespace TServer2.Game;
+namespace TServer.Game;
 
 /// <summary>
 /// 手牌评估器 - 评估玩家的最佳5张牌组合

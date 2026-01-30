@@ -1,6 +1,6 @@
-﻿using TServer2.Model;
+﻿using TServer.Model;
 
-namespace TServer2.Game;
+namespace TServer.Game;
 
 /// <summary>
 /// 牌组

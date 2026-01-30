@@ -1,9 +1,9 @@
 ﻿using System.Net;
 using System.Net.Sockets;
-using TServer2.Logging;
-using TServer2.Protocol;
+using TServer.Logging;
+using TServer.Protocol;
 
-namespace TServer2.Network;
+namespace TServer.Network;
 
 /// <summary>
 /// TCP 服务器
