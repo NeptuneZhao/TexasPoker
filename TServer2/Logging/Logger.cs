@@ -51,7 +51,7 @@ public class GameLogger : ILogger
             Directory.CreateDirectory(_logDirectory);
     }
 
-    public void Log(string message, LogLevel level = LogLevel.Info)
+    private void Log(string message, LogLevel level = LogLevel.Info)
     {
         if (level < _minLevel) return;
 

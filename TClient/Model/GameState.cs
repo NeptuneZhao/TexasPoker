@@ -41,7 +41,7 @@ public class GameState
     public bool IsCountingDown { get; set; }
     
     // 消息
-    public static string LastMessage => string.Empty;
+    public string LastMessage { get; set; } = string.Empty;
 }
 
 public class PlayerInfo
@@ -60,7 +60,7 @@ public class PlayerInfo
 
 public class PotInfo
 {
-    public string Name { get; set; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
     public int Amount { get; init; }
 }
 

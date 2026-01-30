@@ -1,7 +1,4 @@
 <Solution>
   <Project Path="TClient/TClient.csproj" />
-  <Project Path="TServer/TServer.csproj">
-    <Build Solution="Debug|*" Project="false" />
-  </Project>
   <Project Path="TServer2/TServer2.csproj" />
 </Solution>

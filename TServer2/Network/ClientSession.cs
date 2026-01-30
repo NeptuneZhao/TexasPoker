@@ -52,7 +52,7 @@ public class ClientSession : IAsyncDisposable
             while (!_cts.IsCancellationRequested && _client.Connected)
             {
                 var message = await ReceiveMessageAsync(_cts.Token);
-                if (message == null) continue;
+                if (message == null) throw new SocketException(0);
                 LastActivity = DateTime.UtcNow;
                     
                 if (OnMessageReceived != null)

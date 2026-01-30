@@ -1,4 +1,4 @@
-namespace TClient.Model;
+﻿namespace TClient.Model;
 
 public class Card
 {
@@ -7,7 +7,7 @@ public class Card
     
     public string Display => $"{SuitSymbol} {RankSymbol}";
     
-    private string SuitSymbol => Suit switch
+    public string SuitSymbol => Suit switch
     {
         Suit.Clubs => "♣",
         Suit.Diamonds => "♦",
@@ -16,7 +16,7 @@ public class Card
         _ => "?"
     };
     
-    private string RankSymbol => Rank switch
+    public string RankSymbol => Rank switch
     {
         Rank.Two => "2",
         Rank.Three => "3",

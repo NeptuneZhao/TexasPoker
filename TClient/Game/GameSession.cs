@@ -1,100 +1,52 @@
 ﻿using System.Text.Json;
-using Spectre.Console;
-
+using System.Text.Json.Serialization;
 using TClient.Model;
 using TClient.Network;
 using TClient.Protocol;
-using TClient.UI;
 
-namespace TClient;
+namespace TClient.Game;
 
-public class GameClient : IAsyncDisposable
+/// <summary>
+/// 游戏会话 - 管理单个玩家的游戏连接
+/// </summary>
+public class GameSession : IAsyncDisposable
 {
     private TcpGameClient? _network;
     private readonly GameState _state = new();
-    private readonly SpectreRenderer _renderer = new();
     private readonly Lock _stateLock = new();
+    private readonly List<LogEntry> _logs = [];
+    private const int MaxLogs = 20;
 
-    private bool _isRunning = true;
-    private LiveDisplayContext? _liveContext;
+    public string SessionId { get; } = Guid.NewGuid().ToString("N");
+    public bool IsConnected { get; private set; }
+    public event Action<string>? OnStateChanged;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    public async Task<bool> ConnectAsync(string playerName, string? host = null)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
-    
-    public async Task RunAsync()
-    {
-        Console.Title = "Texas Hold'em Poker Client";
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
-
-        // 欢迎
-        ShowWelcome();
-
-        // 连接信息
-        var playerName = GetPlayerName();
-        var host = GetConnectionInfo();
-        
+        host ??= GetConnectionInfo();
         _network = new TcpGameClient(host);
         RegisterNetworkEvents();
 
-        _renderer.AddLog($"正在连接到 {host}:{5000}...", "yellow");
+        AddLog($"正在连接到 {host}:5000...", "yellow");
 
-        // 连接服务器
         if (!await _network.ConnectAsync())
         {
-            AnsiConsole.MarkupLine("[red]连接服务器失败！按任意键退出...[/]");
-            Console.ReadKey(true);
-            return;
+            AddLog("连接服务器失败！", "red");
+            return false;
         }
 
-        // 加入房间
         await _network.JoinRoomAsync(playerName);
         lock (_stateLock)
         {
             _state.MyPlayerName = playerName;
         }
 
-        _renderer.AddLog($"已加入房间，玩家名: {playerName}", "green");
-        _renderer.AddLog("等待游戏开始 (需要4名玩家)...", "yellow");
-        
-        var live = AnsiConsole.Live(BuildCurrentLayout())
-            .AutoClear(false)
-            .Overflow(VerticalOverflow.Ellipsis)
-            .Cropping(VerticalOverflowCropping.Top);
-        
-        await live.StartAsync(async ctx =>
-        {
-            _liveContext = ctx;
-            await MainLoopAsync(ctx);
-        });
-        
+        AddLog($"已加入房间，玩家名: {playerName}", "green");
+        AddLog("等待游戏开始 (需要4名玩家)...", "yellow");
+        IsConnected = true;
+        return true;
     }
-    
-    private static void ShowWelcome()
-    {
-        AnsiConsole.Clear();
-        
-        var title = new FigletText("Texas Poker").Centered().Color(Color.Yellow);
-        
-        AnsiConsole.Write(title);
-        AnsiConsole.WriteLine();
-        
-        var panel = new Panel(
-            new Markup("[bold]欢迎来到德州扑克！[/]\n\n" +
-                       "[dim]• 最少4人开始游戏\n" +
-                       "• 初始筹码1000\n" +
-                       "• 盲注2/4[/]"))
-            .Border(BoxBorder.Rounded)
-            .BorderColor(Color.Green)
-            .Header("[yellow]游戏说明[/]")
-            .Padding(1, 1);
-        
-        AnsiConsole.Write(panel);
-        AnsiConsole.WriteLine();
-    }
-    
+
     private static string GetConnectionInfo()
     {
         string[] hosts = ["127.0.0.1", "www.halfcooler.cn", "mc.halfcooler.cn"];
@@ -105,7 +57,6 @@ public class GameClient : IAsyncDisposable
             try
             {
                 using var client = new System.Net.Sockets.TcpClient();
-                // 尝试在 300 毫秒内连接
                 if (client.ConnectAsync(host, port).Wait(300))
                 {
                     return host;
@@ -120,308 +71,239 @@ public class GameClient : IAsyncDisposable
         return "www.halfcooler.cn"; // 默认返回
     }
 
-    /// <summary>
-    /// 获取玩家名称
-    /// </summary>
-    private static string GetPlayerName()
-    {
-        return AnsiConsole.Ask<string>(
-            "[cyan]你的名字:[/]",
-            $"Player{Random.Shared.Next(1000, 9999)}");
-    }
-    
     private void RegisterNetworkEvents()
     {
         if (_network == null) return;
 
         _network.OnConnected += async () =>
         {
-            _renderer.AddLog("已连接到服务器", "green");
-            RefreshDisplay();
+            AddLog("已连接到服务器", "green");
+            NotifyStateChanged();
             await Task.CompletedTask;
         };
 
         _network.OnDisconnected += async () =>
         {
-            _renderer.AddLog("与服务器断开连接", "red");
-            _isRunning = false;
-            RefreshDisplay();
+            AddLog("与服务器断开连接", "red");
+            IsConnected = false;
+            NotifyStateChanged();
             await Task.CompletedTask;
         };
 
         _network.OnError += async error =>
         {
-            _renderer.AddLog($"错误: {error}", "red");
-            RefreshDisplay();
+            AddLog($"错误: {error}", "red");
+            NotifyStateChanged();
             await Task.CompletedTask;
         };
 
         _network.OnMessageReceived += ProcessServerMessageAsync;
     }
-    
-    private async Task MainLoopAsync(LiveDisplayContext ctx)
-    {
-        // 启动输入处理任务
-        var inputTask = Task.Run(async () =>
-        {
-            while (_isRunning)
-            {
-                try
-                {
-                    // 使用 ReadKey 会阻塞
-                    if (Console.KeyAvailable)
-                    {
-                        var key = Console.ReadKey(true);
-                        await HandleInputAsync(key);
-                    }
-                    else
-                    {
-                        await Task.Delay(50);
-                    }
-                }
-                catch
-                {
-                    // 忽略输入错误
-                }
-            }
-        });
 
-        while (_isRunning)
-        {
-            try
-            {
-                // 刷新显示
-                ctx.UpdateTarget(BuildCurrentLayout());
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                Console.Beep();
-                // 终端尺寸太小导致的渲染错误
-                // 下次再渲染
-            }
-            catch
-            {
-                // 忽略其他渲染错误
-            }
-
-            await Task.Delay(200); // 5 FPS，降低刷新率以减少资源占用
-        }
-
-        // 等待输入任务结束
-        await inputTask;
-
-        // 显示退出信息
-        try
-        {
-            ctx.UpdateTarget(BuildCurrentLayout());
-            _renderer.AddLog("游戏已结束", "yellow");
-            ctx.UpdateTarget(BuildCurrentLayout());
-        }
-        catch
-        {
-            // 忽略最终渲染错误
-        }
-    }
-    
-    private Layout BuildCurrentLayout()
+    private void AddLog(string message, string style = "grey")
     {
         lock (_stateLock)
         {
-            return _renderer.BuildLayout(_state);
+            _logs.Add(new LogEntry(DateTime.Now, message, style));
+            while (_logs.Count > MaxLogs)
+                _logs.RemoveAt(0);
         }
     }
 
-    private void RefreshDisplay()
+    private void NotifyStateChanged()
     {
-        try
-        {
-            _liveContext?.UpdateTarget(BuildCurrentLayout());
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            // 终端尺寸太小导致的渲染错误，忽略
-        }
-        catch
-        {
-            // 忽略其他渲染错误
-        }
+        OnStateChanged?.Invoke(SessionId);
     }
 
-    
-    private async Task HandleInputAsync(ConsoleKeyInfo key)
+    public async Task SendActionAsync(ActionType action, int amount = 0)
     {
         if (_network == null) return;
+        await _network.SendActionAsync(action, amount);
 
-        // Q 键退出
-        if (key.Key == ConsoleKey.Q)
+        var actionText = action switch
         {
-            _isRunning = false;
-            return;
-        }
+            ActionType.Fold => "弃牌",
+            ActionType.Check => "过牌",
+            ActionType.Call => $"跟注 ${amount}",
+            ActionType.Bet => $"下注 ${amount}",
+            ActionType.Raise => $"加注 ${amount}",
+            ActionType.AllIn => $"全下 ${amount}",
+            _ => action.ToString()
+        };
+        AddLog($"你{actionText}了", GetActionStyle(action));
 
-        // 处理摊牌选择
-        bool isShowdown;
-        lock (_stateLock)
-        {
-            isShowdown = _state.IsShowdownRequest;
-        }
-
-        if (isShowdown)
-        {
-            // ReSharper disable once SwitchStatementMissingSomeEnumCasesNoDefault
-            switch (key.Key)
-            {
-                case ConsoleKey.S:
-                    await _network.ShowCardsAsync();
-                    _renderer.AddLog("你选择了亮牌", "cyan");
-                    lock (_stateLock)
-                    {
-                        _state.IsShowdownRequest = false;
-                    }
-                    RefreshDisplay();
-                    return;
-                case ConsoleKey.M:
-                    await _network.MuckCardsAsync();
-                    _renderer.AddLog("你选择了盖牌");
-                    lock (_stateLock)
-                    {
-                        _state.IsShowdownRequest = false;
-                    }
-                    RefreshDisplay();
-                    return;
-            }
-        }
-
-        // 处理游戏行动
-        bool isMyTurn;
-        lock (_stateLock)
-        {
-            isMyTurn = _state.IsMyTurn;
-        }
-
-        if (!isMyTurn) return;
-
-        switch (key.Key)
-        {
-            case ConsoleKey.F: // Fold
-                await _network.SendActionAsync(ActionType.Fold);
-                _renderer.AddLog("你弃牌了", "red");
-                SetMyTurnFalse();
-                break;
-
-            case ConsoleKey.K: // Check
-                await _network.SendActionAsync(ActionType.Check);
-                _renderer.AddLog("你过牌了", "cyan");
-                SetMyTurnFalse();
-                break;
-
-            case ConsoleKey.C: // Call
-                int callAmount;
-                lock (_stateLock)
-                {
-                    callAmount = _state.CallAmount;
-                }
-                await _network.SendActionAsync(ActionType.Call, callAmount);
-                _renderer.AddLog($"你跟注了 ${callAmount}", "green");
-                SetMyTurnFalse();
-                break;
-
-            case ConsoleKey.B: // Bet
-                var betAmount = await GetAmountInputAsync("下注金额");
-                if (betAmount > 0)
-                {
-                    await _network.SendActionAsync(ActionType.Bet, betAmount);
-                    _renderer.AddLog($"你下注了 ${betAmount}", "yellow");
-                    SetMyTurnFalse();
-                }
-                break;
-
-            case ConsoleKey.R: // Raise
-                var raiseAmount = await GetAmountInputAsync("加注金额");
-                if (raiseAmount > 0)
-                {
-                    await _network.SendActionAsync(ActionType.Raise, raiseAmount);
-                    _renderer.AddLog($"你加注到 ${raiseAmount}", "yellow");
-                    SetMyTurnFalse();
-                }
-                break;
-
-            case ConsoleKey.A: // All-In
-                int chips;
-                lock (_stateLock)
-                {
-                    chips = _state.MyChips;
-                }
-                await _network.SendActionAsync(ActionType.AllIn, chips);
-                _renderer.AddLog($"你全下了 ${chips}！", "bold red");
-                SetMyTurnFalse();
-                break;
-        }
-
-        RefreshDisplay();
-    }
-
-    private void SetMyTurnFalse()
-    {
         lock (_stateLock)
         {
             _state.IsMyTurn = false;
         }
+        NotifyStateChanged();
     }
 
-    /// <summary>
-    /// 获取金额输入
-    /// </summary>
-    private static async Task<int> GetAmountInputAsync(string prompt)
+    public async Task ShowCardsAsync()
     {
-        // 暂时使用简单的控制台输入
-        // 在实际中可以使用更复杂的UI
-        Console.CursorVisible = true;
-        Console.SetCursorPosition(0, Console.WindowHeight - 2);
-        Console.Write($"{prompt}: ");
-        
-        var input = "";
-        while (true)
+        if (_network == null) return;
+        await _network.ShowCardsAsync();
+        AddLog("你选择了亮牌", "cyan");
+        lock (_stateLock)
         {
-            if (!Console.KeyAvailable)
-            {
-                await Task.Delay(10);
-                continue;
-            }
-
-            var k = Console.ReadKey(true);
-            if (k.Key == ConsoleKey.Enter)
-                break;
-            // ReSharper Disable once SwitchStatementHandlesSomeKnownEnumValuesWithDefault
-            switch (k.Key)
-            {
-                case ConsoleKey.Escape:
-                    Console.CursorVisible = false;
-                    return 0;
-                case ConsoleKey.Backspace when input.Length > 0:
-                    input = input[..^1];
-                    Console.Write("\b \b");
-                    break;
-                default:
-                {
-                    if (char.IsDigit(k.KeyChar))
-                    {
-                        input += k.KeyChar;
-                        Console.Write(k.KeyChar);
-                    }
-
-                    break;
-                }
-            }
+            _state.IsShowdownRequest = false;
         }
-
-        Console.CursorVisible = false;
-        return int.TryParse(input, out var amount) ? amount : 0;
+        NotifyStateChanged();
     }
 
-    /// <summary>
-    /// 处理服务器消息
-    /// </summary>
+    public async Task MuckCardsAsync()
+    {
+        if (_network == null) return;
+        await _network.MuckCardsAsync();
+        AddLog("你选择了盖牌");
+        lock (_stateLock)
+        {
+            _state.IsShowdownRequest = false;
+        }
+        NotifyStateChanged();
+    }
+
+    private static string GetActionStyle(ActionType action)
+    {
+        return action switch
+        {
+            ActionType.Fold => "red",
+            ActionType.Check => "cyan",
+            ActionType.Call => "green",
+            ActionType.Bet => "yellow",
+            ActionType.Raise => "yellow",
+            ActionType.AllIn => "red",
+            _ => "white"
+        };
+    }
+
+    public GameStateDto GetState()
+    {
+        lock (_stateLock)
+        {
+            return new GameStateDto
+            {
+                Phase = _state.Phase,
+                HandNumber = _state.HandNumber,
+                MyPlayerId = _state.MyPlayerId,
+                MyPlayerName = _state.MyPlayerName,
+                MySeatIndex = _state.MySeatIndex,
+                MyChips = _state.MyChips,
+                MyHand = _state.MyHand.Select(c => new CardViewDto
+                {
+                    Display = c.Display,
+                    Suit = c.Suit.ToString(),
+                    Rank = c.Rank.ToString(),
+                    SuitSymbol = c.SuitSymbol,
+                    RankSymbol = c.RankSymbol,
+                    IsRed = c.IsRed
+                }).ToList(),
+                Players = _state.Players.OrderBy(p => p.SeatIndex).Select(p => new PlayerViewDto
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    SeatIndex = p.SeatIndex,
+                    Chips = p.Chips,
+                    CurrentBet = p.CurrentBet,
+                    HasFolded = p.HasFolded,
+                    IsAllIn = p.IsAllIn,
+                    IsConnected = p.IsConnected,
+                    IsActing = p.Id == _state.CurrentActingPlayerId,
+                    IsMe = p.Id == _state.MyPlayerId,
+                    IsDealer = p.SeatIndex == _state.DealerSeatIndex,
+                    IsSmallBlind = p.SeatIndex == _state.SmallBlindSeatIndex,
+                    IsBigBlind = p.SeatIndex == _state.BigBlindSeatIndex,
+                    ShownCards = p.ShownCards?.Select(c => new CardViewDto
+                    {
+                        Display = c.Display,
+                        Suit = c.Suit.ToString(),
+                        Rank = c.Rank.ToString(),
+                        SuitSymbol = c.SuitSymbol,
+                        RankSymbol = c.RankSymbol,
+                        IsRed = c.IsRed
+                    }).ToList(),
+                    HandRank = p.HandRank
+                }).ToList(),
+                CommunityCards = _state.CommunityCards.Select(c => new CardViewDto
+                {
+                    Display = c.Display,
+                    Suit = c.Suit.ToString(),
+                    Rank = c.Rank.ToString(),
+                    SuitSymbol = c.SuitSymbol,
+                    RankSymbol = c.RankSymbol,
+                    IsRed = c.IsRed
+                }).ToList(),
+                Pots = _state.Pots.Select(p => new PotViewDto { Name = p.Name, Amount = p.Amount }).ToList(),
+                TotalPot = _state.Pots.Sum(p => p.Amount),
+                DealerSeatIndex = _state.DealerSeatIndex,
+                SmallBlindSeatIndex = _state.SmallBlindSeatIndex,
+                BigBlindSeatIndex = _state.BigBlindSeatIndex,
+                IsMyTurn = _state.IsMyTurn,
+                CurrentBet = _state.CurrentBet,
+                CallAmount = _state.CallAmount,
+                MinRaise = _state.MinRaise,
+                ActionTimeout = _state.ActionTimeout,
+                AvailableActions = _state.AvailableActions.Select(a => new ActionViewDto
+                {
+                    Type = a.Type,
+                    MinAmount = a.MinAmount,
+                    MaxAmount = a.MaxAmount,
+                    Description = a.Description,
+                    Key = GetActionKey(a.Type),
+                    DisplayText = GetActionDisplayText(a)
+                }).ToList(),
+                IsShowdownRequest = _state.IsShowdownRequest,
+                MustShowCards = _state.MustShowCards,
+                CountdownSeconds = _state.CountdownSeconds,
+                IsCountingDown = _state.IsCountingDown,
+                Logs = GetLogs()
+            };
+        }
+    }
+
+    public List<LogViewDto> GetLogs()
+    {
+        lock (_stateLock)
+        {
+            return _logs.Select(l => new LogViewDto
+            {
+                Time = l.Time.ToString("HH:mm:ss"),
+                Message = l.Message,
+                Style = l.Style
+            }).ToList();
+        }
+    }
+
+    private static string GetActionKey(string actionType)
+    {
+        return actionType.ToLower() switch
+        {
+            "fold" => "F",
+            "check" => "K",
+            "call" => "C",
+            "bet" => "B",
+            "raise" => "R",
+            "allin" => "A",
+            _ => "?"
+        };
+    }
+
+    private static string GetActionDisplayText(AvailableActionInfo action)
+    {
+        return action.Type.ToLower() switch
+        {
+            "fold" => "弃牌",
+            "check" => "过牌",
+            "call" => $"跟注 (${action.MinAmount ?? 0})",
+            "bet" => $"下注 (${action.MinAmount ?? 0}-${action.MaxAmount ?? 0})",
+            "raise" => $"加注 (${action.MinAmount ?? 0}-${action.MaxAmount ?? 0})",
+            "allin" => $"全下 (${action.MaxAmount ?? 0})",
+            _ => action.Description
+        };
+    }
+
+    #region Message Handlers
+
     private async Task ProcessServerMessageAsync(ServerMessage message)
     {
         switch (message.Type)
@@ -487,17 +369,13 @@ public class GameClient : IAsyncDisposable
                 HandleError(message.Payload);
                 break;
             case ServerMessageType.Heartbeat:
-                // 忽略心跳
-                break;
             default:
-                throw new ArgumentOutOfRangeException(nameof(message));
+                break;
         }
 
-        RefreshDisplay();
+        NotifyStateChanged();
         await Task.CompletedTask;
     }
-
-    #region Message Handlers
 
     private void HandleJoinSuccess(object? payload)
     {
@@ -516,7 +394,6 @@ public class GameClient : IAsyncDisposable
             {
                 _state.Players.Add(ConvertToPlayerInfo(p));
             }
-            // 添加自己
             _state.Players.Add(new PlayerInfo
             {
                 Id = data.PlayerId,
@@ -526,7 +403,7 @@ public class GameClient : IAsyncDisposable
             });
         }
 
-        _renderer.AddLog($"加入成功！座位 {data.SeatIndex}，筹码 ${data.Chips}", "green");
+        AddLog($"加入成功！座位 {data.SeatIndex}，筹码 ${data.Chips}", "green");
     }
 
     private void HandlePlayerJoined(object? payload)
@@ -536,7 +413,6 @@ public class GameClient : IAsyncDisposable
 
         lock (_stateLock)
         {
-            // 检查是否已存在
             var existing = _state.Players.FirstOrDefault(p => p.Id == data.Player.Id);
             if (existing != null)
                 _state.Players.Remove(existing);
@@ -544,7 +420,7 @@ public class GameClient : IAsyncDisposable
             _state.Players.Add(ConvertToPlayerInfo(data.Player));
         }
 
-        _renderer.AddLog($"{data.Player.Name} 加入了游戏 ({data.CurrentPlayerCount}/{data.MaxPlayers})", "cyan");
+        AddLog($"{data.Player.Name} 加入了游戏 ({data.CurrentPlayerCount}/{data.MaxPlayers})", "cyan");
     }
 
     private void HandlePlayerLeft(object? payload)
@@ -557,7 +433,7 @@ public class GameClient : IAsyncDisposable
             _state.Players.RemoveAll(p => p.Id == data.PlayerId);
         }
 
-        _renderer.AddLog($"{data.PlayerName} 离开了游戏 ({data.Reason})", "yellow");
+        AddLog($"{data.PlayerName} 离开了游戏 ({data.Reason})", "yellow");
     }
 
     private void HandleCountdownStarted(object? payload)
@@ -572,7 +448,7 @@ public class GameClient : IAsyncDisposable
             _state.Phase = "Countdown";
         }
 
-        _renderer.AddLog($"游戏即将开始！倒计时 {data.Seconds} 秒...", "yellow");
+        AddLog($"游戏即将开始！倒计时 {data.Seconds} 秒...", "yellow");
     }
 
     private void HandleCountdownUpdate(object? payload)
@@ -606,7 +482,7 @@ public class GameClient : IAsyncDisposable
             }
         }
 
-        _renderer.AddLog("🎮 游戏开始！", "bold green");
+        AddLog("🎮 游戏开始！", "green");
     }
 
     private void HandleHoleCards(object? payload)
@@ -624,7 +500,7 @@ public class GameClient : IAsyncDisposable
         }
 
         var cards = string.Join(" ", data.Cards.Select(c => $"{GetSuitSymbol(c.Suit)}{GetRankSymbol(c.Rank)}"));
-        _renderer.AddLog($"🎴 你的手牌: {cards}", "cyan");
+        AddLog($"🎴 你的手牌: {cards}", "cyan");
     }
 
     private void HandleNewHandStarted(object? payload)
@@ -645,7 +521,6 @@ public class GameClient : IAsyncDisposable
             _state.CurrentBet = 0;
             _state.IsMyTurn = false;
 
-            // 更新玩家状态
             _state.Players.Clear();
             foreach (var p in data.Players)
             {
@@ -656,7 +531,7 @@ public class GameClient : IAsyncDisposable
             }
         }
 
-        _renderer.AddLog($"━━━ 第 {data.HandNumber} 手开始 ━━━", "bold yellow");
+        AddLog($"━━━ 第 {data.HandNumber} 手开始 ━━━", "yellow");
     }
 
     private void HandleBlindsPosted(object? payload)
@@ -668,7 +543,6 @@ public class GameClient : IAsyncDisposable
         {
             _state.CurrentBet = data.BigBlindAmount;
 
-            // 更新玩家下注
             var sb = _state.Players.FirstOrDefault(p => p.Id == data.SmallBlindPlayerId);
             sb?.CurrentBet = data.SmallBlindAmount;
 
@@ -676,7 +550,7 @@ public class GameClient : IAsyncDisposable
             bb?.CurrentBet = data.BigBlindAmount;
         }
 
-        _renderer.AddLog($"盲注已下: SB ${data.SmallBlindAmount}, BB ${data.BigBlindAmount}", "dim");
+        AddLog($"盲注已下: SB ${data.SmallBlindAmount}, BB ${data.BigBlindAmount}");
     }
 
     private void HandleActionRequest(object? payload)
@@ -713,7 +587,6 @@ public class GameClient : IAsyncDisposable
                 });
             }
 
-            // 更新底池
             _state.Pots.Clear();
             foreach (var pot in data.Pots)
             {
@@ -721,7 +594,7 @@ public class GameClient : IAsyncDisposable
             }
         }
 
-        _renderer.AddLog($">>> 轮到你了！({data.TimeoutSeconds}秒)", "bold green");
+        AddLog($">>> 轮到你了！({data.TimeoutSeconds}秒)", "green");
     }
 
     private void HandlePlayerActed(object? payload)
@@ -748,7 +621,6 @@ public class GameClient : IAsyncDisposable
                 }
             }
 
-            // 更新当前下注
             if (data.Amount > 0 && player?.CurrentBet > _state.CurrentBet)
                 _state.CurrentBet = player.CurrentBet;
 
@@ -766,7 +638,7 @@ public class GameClient : IAsyncDisposable
             _ => data.Action.ToString()
         };
 
-        _renderer.AddLog($"{data.PlayerName}: {actionText}", "white");
+        AddLog($"{data.PlayerName}: {actionText}", "white");
     }
 
     private void HandlePhaseChanged(object? payload)
@@ -779,18 +651,15 @@ public class GameClient : IAsyncDisposable
             _state.Phase = data.Phase;
             _state.CurrentBet = 0;
 
-            // 重置玩家当前下注
             foreach (var p in _state.Players)
                 p.CurrentBet = 0;
 
-            // 更新公共牌
             _state.CommunityCards.Clear();
             foreach (var c in data.CommunityCards)
             {
                 _state.CommunityCards.Add(ConvertToCard(c));
             }
 
-            // 更新底池
             _state.Pots.Clear();
             foreach (var pot in data.Pots)
             {
@@ -807,7 +676,7 @@ public class GameClient : IAsyncDisposable
             _ => data.Phase
         };
 
-        _renderer.AddLog($"━━━ {phaseName} ━━━", "bold cyan");
+        AddLog($"━━━ {phaseName} ━━━", "cyan");
     }
 
     private void HandleCommunityCards(object? payload)
@@ -825,7 +694,7 @@ public class GameClient : IAsyncDisposable
         }
 
         var newCards = string.Join(" ", data.NewCards.Select(c => $"{GetSuitSymbol(c.Suit)}{GetRankSymbol(c.Rank)}"));
-        _renderer.AddLog($"新发公共牌: {newCards}", "cyan");
+        AddLog($"新发公共牌: {newCards}", "cyan");
     }
 
     private void HandleShowdownRequest(object? payload)
@@ -847,8 +716,8 @@ public class GameClient : IAsyncDisposable
             _state.MustShowCards = data.MustShow;
         }
 
-        var msg = data.MustShow ? "你必须亮牌！[S]亮牌" : "选择: [S]亮牌 [M]盖牌";
-        _renderer.AddLog($"🎭 摊牌时间！{msg}", "bold cyan");
+        var msg = data.MustShow ? "你必须亮牌！" : "选择亮牌或盖牌";
+        AddLog($"🎭 摊牌时间！{msg}", "cyan");
     }
 
     private void HandlePlayerShowedCards(object? payload)
@@ -871,13 +740,13 @@ public class GameClient : IAsyncDisposable
 
         if (data.Mucked)
         {
-            _renderer.AddLog($"{data.PlayerName} 选择盖牌", "dim");
+            AddLog($"{data.PlayerName} 选择盖牌");
         }
         else
         {
             var cards = string.Join(" ", data.Cards.Select(c => $"{GetSuitSymbol(c.Suit)}{GetRankSymbol(c.Rank)}"));
             var rank = data.HandEvaluation?.Rank ?? "";
-            _renderer.AddLog($"{data.PlayerName} 亮牌: {cards} [{rank}]", "cyan");
+            AddLog($"{data.PlayerName} 亮牌: {cards} [{rank}]", "cyan");
         }
     }
 
@@ -896,8 +765,8 @@ public class GameClient : IAsyncDisposable
                     myId = _state.MyPlayerId;
                 }
 
-                var style = winner.PlayerId == myId ? "bold green" : "yellow";
-                _renderer.AddLog($"🏆 {winner.PlayerName} 赢得 {pot.PotName} ${winner.AmountWon} [{winner.HandRank}]", style);
+                var style = winner.PlayerId == myId ? "green" : "yellow";
+                AddLog($"🏆 {winner.PlayerName} 赢得 {pot.PotName} ${winner.AmountWon} [{winner.HandRank}]", style);
 
                 if (winner.PlayerId != myId) continue;
                 lock (_stateLock)
@@ -919,7 +788,6 @@ public class GameClient : IAsyncDisposable
             _state.IsMyTurn = false;
             _state.IsShowdownRequest = false;
 
-            // 更新玩家筹码
             foreach (var p in data.Players)
             {
                 var player = _state.Players.FirstOrDefault(x => x.Id == p.Id);
@@ -938,7 +806,7 @@ public class GameClient : IAsyncDisposable
             }
         }
 
-        _renderer.AddLog("这一手结束了", "dim");
+        AddLog("这一手结束了");
     }
 
     private void HandleGameOver(object? payload)
@@ -951,8 +819,8 @@ public class GameClient : IAsyncDisposable
             _state.Phase = "GameOver";
         }
 
-        _renderer.AddLog($"🎮 游戏结束！原因: {data.Reason}", "bold red");
-        _renderer.AddLog("━━━ 最终排名 ━━━", "yellow");
+        AddLog($"🎮 游戏结束！原因: {data.Reason}", "red");
+        AddLog("━━━ 最终排名 ━━━", "yellow");
 
         foreach (var entry in data.Rankings)
         {
@@ -963,7 +831,7 @@ public class GameClient : IAsyncDisposable
                 3 => "🥉",
                 _ => $"#{entry.Rank}"
             };
-            _renderer.AddLog($"{medal} {entry.PlayerName}: ${entry.FinalChips}", "white");
+            AddLog($"{medal} {entry.PlayerName}: ${entry.FinalChips}", "white");
         }
     }
 
@@ -1003,7 +871,7 @@ public class GameClient : IAsyncDisposable
         var data = DeserializePayload<ErrorPayload>(payload);
         if (data == null) return;
 
-        _renderer.AddLog($"❌ 错误 [{data.Code}]: {data.Message}", "red");
+        AddLog($"❌ 错误 [{data.Code}]: {data.Message}", "red");
     }
 
     #endregion
@@ -1012,11 +880,41 @@ public class GameClient : IAsyncDisposable
 
     private static T? DeserializePayload<T>(object? payload) where T : class
     {
-        return payload switch
+        switch (payload)
         {
-            null => null,
-            T typed => typed,
-            JsonElement je => JsonSerializer.Deserialize<T>(je.GetRawText(), JsonOptions),
+            case null:
+                return null;
+            case T typed:
+                return typed;
+        }
+
+        if (payload is not JsonElement je) return null;
+
+        var json = je.GetRawText();
+        
+        // Use type-specific deserialization for AOT compatibility
+        return typeof(T).Name switch
+        {
+            nameof(JoinSuccessPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.JoinSuccessPayload) as T,
+            nameof(PlayerJoinedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.PlayerJoinedPayload) as T,
+            nameof(PlayerLeftPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.PlayerLeftPayload) as T,
+            nameof(CountdownStartedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.CountdownStartedPayload) as T,
+            nameof(CountdownUpdatePayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.CountdownUpdatePayload) as T,
+            nameof(GameStartedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.GameStartedPayload) as T,
+            nameof(HoleCardsPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.HoleCardsPayload) as T,
+            nameof(NewHandStartedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.NewHandStartedPayload) as T,
+            nameof(BlindsPostedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.BlindsPostedPayload) as T,
+            nameof(ActionRequestPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.ActionRequestPayload) as T,
+            nameof(PlayerActedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.PlayerActedPayload) as T,
+            nameof(PhaseChangedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.PhaseChangedPayload) as T,
+            nameof(CommunityCardsPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.CommunityCardsPayload) as T,
+            nameof(ShowdownRequestPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.ShowdownRequestPayload) as T,
+            nameof(PlayerShowedCardsPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.PlayerShowedCardsPayload) as T,
+            nameof(PotDistributionPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.PotDistributionPayload) as T,
+            nameof(HandEndedPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.HandEndedPayload) as T,
+            nameof(GameOverPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.GameOverPayload) as T,
+            nameof(GameStatePayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.GameStatePayload) as T,
+            nameof(ErrorPayload) => JsonSerializer.Deserialize(json, PayloadJsonContext.Default.ErrorPayload) as T,
             _ => null
         };
     }
@@ -1078,4 +976,116 @@ public class GameClient : IAsyncDisposable
         }
         GC.SuppressFinalize(this);
     }
+
+    private record LogEntry(DateTime Time, string Message, string Style);
 }
+
+#region View DTOs
+
+public class GameStateDto
+{
+    public string Phase { get; init; } = string.Empty;
+    public int HandNumber { get; init; }
+    public string MyPlayerId { get; init; } = string.Empty;
+    public string MyPlayerName { get; init; } = string.Empty;
+    public int MySeatIndex { get; init; }
+    public int MyChips { get; init; }
+    public List<CardViewDto> MyHand { get; init; } = [];
+    public List<PlayerViewDto> Players { get; init; } = [];
+    public List<CardViewDto> CommunityCards { get; init; } = [];
+    public List<PotViewDto> Pots { get; init; } = [];
+    public int TotalPot { get; init; }
+    public int DealerSeatIndex { get; init; }
+    public int SmallBlindSeatIndex { get; init; }
+    public int BigBlindSeatIndex { get; init; }
+    public bool IsMyTurn { get; init; }
+    public int CurrentBet { get; init; }
+    public int CallAmount { get; init; }
+    public int MinRaise { get; init; }
+    public int ActionTimeout { get; init; }
+    public List<ActionViewDto> AvailableActions { get; init; } = [];
+    public bool IsShowdownRequest { get; init; }
+    public bool MustShowCards { get; init; }
+    public int CountdownSeconds { get; init; }
+    public bool IsCountingDown { get; init; }
+    public List<LogViewDto> Logs { get; init; } = [];
+}
+
+public class CardViewDto
+{
+    public string Display { get; init; } = string.Empty;
+    public string Suit { get; init; } = string.Empty;
+    public string Rank { get; init; } = string.Empty;
+    public string SuitSymbol { get; init; } = string.Empty;
+    public string RankSymbol { get; init; } = string.Empty;
+    public bool IsRed { get; init; }
+}
+
+public class PlayerViewDto
+{
+    public string Id { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public int SeatIndex { get; init; }
+    public int Chips { get; init; }
+    public int CurrentBet { get; init; }
+    public bool HasFolded { get; init; }
+    public bool IsAllIn { get; init; }
+    public bool IsConnected { get; init; }
+    public bool IsActing { get; init; }
+    public bool IsMe { get; init; }
+    public bool IsDealer { get; init; }
+    public bool IsSmallBlind { get; init; }
+    public bool IsBigBlind { get; init; }
+    public List<CardViewDto>? ShownCards { get; init; }
+    public string? HandRank { get; init; }
+}
+
+public class PotViewDto
+{
+    public string Name { get; init; } = string.Empty;
+    public int Amount { get; init; }
+}
+
+public class ActionViewDto
+{
+    public string Type { get; init; } = string.Empty;
+    public int? MinAmount { get; init; }
+    public int? MaxAmount { get; init; }
+    public string Description { get; init; } = string.Empty;
+    public string Key { get; init; } = string.Empty;
+    public string DisplayText { get; init; } = string.Empty;
+}
+
+public class LogViewDto
+{
+    public string Time { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public string Style { get; init; } = string.Empty;
+}
+
+#endregion
+
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(JoinSuccessPayload))]
+[JsonSerializable(typeof(PlayerJoinedPayload))]
+[JsonSerializable(typeof(PlayerLeftPayload))]
+[JsonSerializable(typeof(CountdownStartedPayload))]
+[JsonSerializable(typeof(CountdownUpdatePayload))]
+[JsonSerializable(typeof(GameStartedPayload))]
+[JsonSerializable(typeof(HoleCardsPayload))]
+[JsonSerializable(typeof(NewHandStartedPayload))]
+[JsonSerializable(typeof(BlindsPostedPayload))]
+[JsonSerializable(typeof(ActionRequestPayload))]
+[JsonSerializable(typeof(PlayerActedPayload))]
+[JsonSerializable(typeof(PhaseChangedPayload))]
+[JsonSerializable(typeof(CommunityCardsPayload))]
+[JsonSerializable(typeof(ShowdownRequestPayload))]
+[JsonSerializable(typeof(PlayerShowedCardsPayload))]
+[JsonSerializable(typeof(PotDistributionPayload))]
+[JsonSerializable(typeof(HandEndedPayload))]
+[JsonSerializable(typeof(GameOverPayload))]
+[JsonSerializable(typeof(GameStatePayload))]
+[JsonSerializable(typeof(ErrorPayload))]
+internal partial class PayloadJsonContext : JsonSerializerContext;

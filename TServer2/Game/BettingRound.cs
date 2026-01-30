@@ -82,23 +82,22 @@ public class BettingRound
         {
             var minBetTotal = CurrentBet + MinRaise;
             var minRaiseAmount = minBetTotal - player.CurrentBet;
-            var maxRaiseAmount = playerChips;
 
-            if (maxRaiseAmount >= minRaiseAmount)
+            if (playerChips >= minRaiseAmount)
             {
                 if (CurrentBet == 0)
                 {
                     // 下注
                     actions.Add(new AvailableAction(ActionType.Bet, 
-                        $"Bet {MinRaise}-{maxRaiseAmount}", 
-                        MinRaise, maxRaiseAmount));
+                        $"Bet {MinRaise}-{playerChips}", 
+                        MinRaise, playerChips));
                 }
                 else
                 {
                     // 加注
                     actions.Add(new AvailableAction(ActionType.Raise, 
-                        $"Raise to {minBetTotal}-{player.CurrentBet + maxRaiseAmount}", 
-                        minBetTotal, player.CurrentBet + maxRaiseAmount));
+                        $"Raise to {minBetTotal}-{player.CurrentBet + playerChips}", 
+                        minBetTotal, player.CurrentBet + playerChips));
                 }
             }
         }

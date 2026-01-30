@@ -6,9 +6,6 @@ using TServer2.Protocol;
 
 namespace TServer2.Controller;
 
-/// <summary>
-/// 游戏房间控制器 - 协调网络层和游戏逻辑层
-/// </summary>
 public class GameRoomController : IAsyncDisposable
 {
     private readonly TcpGameServer _server;
@@ -33,7 +30,7 @@ public class GameRoomController : IAsyncDisposable
     }
 
     /// <summary>
-    /// 启动控制器。
+    /// 启动控制器
     /// </summary>
     public async Task StartAsync()
     {
@@ -50,8 +47,6 @@ public class GameRoomController : IAsyncDisposable
         await _server.StopAsync();
         Logger.Info("Game Room Controller stopped");
     }
-
-    #region Event Handlers
 
     private static async Task OnClientConnectedAsync(ClientSession session)
     {
@@ -149,10 +144,6 @@ public class GameRoomController : IAsyncDisposable
             }
         }
     }
-
-    #endregion
-
-    #region Message Handlers
 
     private async Task HandleJoinRoomAsync(ClientSession session, string? playerName)
     {
@@ -282,10 +273,6 @@ public class GameRoomController : IAsyncDisposable
         }, _countdownCts.Token);
     }
 
-    #endregion
-
-    #region Communication
-
     private async Task SendToPlayerAsync(string playerId, ServerMessage message)
     {
         ClientSession? session;
@@ -340,8 +327,6 @@ public class GameRoomController : IAsyncDisposable
             Logger.Warn($"Broadcast failed for session {session.SessionId}: {ex.Message}");
         }
     }
-
-    #endregion
 
     public async ValueTask DisposeAsync()
     {

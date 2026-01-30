@@ -2,6 +2,7 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TClient.Protocol;
 
 namespace TClient.Network;
@@ -18,12 +19,6 @@ public class TcpGameClient(string host = "127.0.0.1", int port = 5000) : IAsyncD
     private Task? _receiveTask;
     private Task? _heartbeatTask;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
     
     public event Func<ServerMessage, Task>? OnMessageReceived;
     public event Func<string, Task>? OnError;
@@ -116,7 +111,7 @@ public class TcpGameClient(string host = "127.0.0.1", int port = 5000) : IAsyncD
         }
 
         var json = Encoding.UTF8.GetString(bodyBuffer);
-        return JsonSerializer.Deserialize<ServerMessage>(json, JsonOptions);
+        return JsonSerializer.Deserialize(json, NetworkJsonContext.Default.ServerMessage);
     }
     
     private async Task HeartbeatLoopAsync(CancellationToken ct)
@@ -146,7 +141,7 @@ public class TcpGameClient(string host = "127.0.0.1", int port = 5000) : IAsyncD
         await _sendLock.WaitAsync();
         try
         {
-            var json = JsonSerializer.Serialize(message, JsonOptions);
+            var json = JsonSerializer.Serialize(message, NetworkJsonContext.Default.ClientMessage);
             var bodyBytes = Encoding.UTF8.GetBytes(json);
             
             var lengthBuffer = new byte[4];
@@ -191,17 +186,18 @@ public class TcpGameClient(string host = "127.0.0.1", int port = 5000) : IAsyncD
     
     public async Task MuckCardsAsync()
     {
-        // 弃牌
         await SendMessageAsync(new ClientMessage
         {
             Type = ClientMessageType.MuckCards
         });
     }
     
-    // TODO: ignored fix
     private async Task DisconnectAsync()
     {
-        await _cts?.CancelAsync()!;
+        if (_cts != null)
+        {
+            await _cts.CancelAsync();
+        }
         
         if (_receiveTask != null)
         {
@@ -226,3 +222,10 @@ public class TcpGameClient(string host = "127.0.0.1", int port = 5000) : IAsyncD
         GC.SuppressFinalize(this);
     }
 }
+
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(ServerMessage))]
+[JsonSerializable(typeof(ClientMessage))]
+internal partial class NetworkJsonContext : JsonSerializerContext;

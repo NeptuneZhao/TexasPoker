@@ -1,4 +1,4 @@
-﻿namespace TServer2.Model;
+﻿﻿namespace TServer2.Model;
 
 /// <summary>
 /// 扑克牌花色
@@ -30,10 +30,10 @@ public class Card(Suit suit, Rank rank)
 
     private static readonly Dictionary<Suit, string> SuitSymbols = new()
     {
-        { Suit.Clubs, "♣" },
-        { Suit.Diamonds, "♦" },
-        { Suit.Hearts, "♥" },
-        { Suit.Spades, "♠" }
+        { Suit.Clubs, "梅花" },
+        { Suit.Diamonds, "方片" },
+        { Suit.Hearts, "红桃" },
+        { Suit.Spades, "黑桃" }
     };
 
     public override string ToString()
@@ -66,11 +66,11 @@ public class Card(Suit suit, Rank rank)
 /// </summary>
 public class CardDto(Card card)
 {
-    private string Suit { get; } = card.Suit.ToString();
-    private int Rank { get; } = (int)card.Rank;
+    public int Suit { get; } = (int)card.Suit;
+    public int Rank { get; } = (int)card.Rank;
 
     public Card ToCard()
     {
-        return new Card(Enum.Parse<Suit>(Suit), (Rank)Rank);
+        return new Card((Suit)Suit, (Rank)Rank);
     }
 }

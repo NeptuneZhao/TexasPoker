@@ -31,7 +31,8 @@ public class ServerMessage
     public object? Payload { get; init; }
 }
 
-public abstract class JoinSuccessPayload
+// ReSharper disable ClassNeverInstantiated.Global
+public class JoinSuccessPayload
 {
     public string PlayerId { get; set; } = string.Empty;
     public string PlayerName { get; set; } = string.Empty;
@@ -40,7 +41,7 @@ public abstract class JoinSuccessPayload
     public List<PlayerDto> ExistingPlayers { get; set; } = [];
 }
 
-public abstract class PlayerJoinedPayload
+public class PlayerJoinedPayload
 {
     public PlayerDto Player { get; set; } = new();
     public int CurrentPlayerCount { get; set; }
@@ -48,14 +49,14 @@ public abstract class PlayerJoinedPayload
     public int MaxPlayers { get; set; }
 }
 
-public abstract class PlayerLeftPayload
+public class PlayerLeftPayload
 {
     public string PlayerId { get; set; } = string.Empty;
     public string PlayerName { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
 }
 
-public abstract class CountdownStartedPayload
+public class CountdownStartedPayload
 {
     public int Seconds { get; set; }
 }
@@ -210,8 +211,6 @@ public class ErrorPayload
     public string Code { get; set; } = string.Empty;
 }
 
-#region DTO Types
-
 public class PlayerDto
 {
     public string Id { get; set; } = string.Empty;
@@ -242,5 +241,3 @@ public class HandEvaluationDto
     public string Rank { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
 }
-
-#endregion
