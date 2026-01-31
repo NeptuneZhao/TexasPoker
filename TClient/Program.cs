@@ -9,11 +9,6 @@ public abstract class Program
 {
     public static void Main(string[] args)
     { 
-        _ = Task.Run(async () =>
-        {
-            await TServer.Program.Main([]);
-        });
-        
         var builder = WebApplication.CreateSlimBuilder(args);
 
         builder.Services.ConfigureHttpJsonOptions(options =>
